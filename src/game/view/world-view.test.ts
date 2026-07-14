@@ -3,6 +3,7 @@ import type { Radians } from "../../engine/math/angles";
 import type { MPerS } from "../../engine/math/units";
 import { createVariantCatalog, sedanCarVariant } from "../vehicle/variants";
 import type { CarState, World } from "../vehicle/vehicle-types";
+import { createParkingLotWorld } from "../vehicle/world-setup";
 import { worldToEntities } from "./world-view";
 
 const catalog = createVariantCatalog();
@@ -82,5 +83,20 @@ describe("worldToEntities", () => {
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids).toContain("car:0");
     expect(ids).toContain("car:1");
+  });
+
+  it("renders every car + trailer in the populated lot, all trailers below all car bodies", () => {
+    const lot = createParkingLotWorld();
+    const entities = worldToEntities(lot, lot.catalog);
+    const carBodies = entities.filter((e) => /^car:\d+$/.test(e.id));
+    const trailers = entities.filter((e) => /^car:\d+:trailer$/.test(e.id));
+    expect(carBodies).toHaveLength(lot.cars.length);
+    expect(trailers).toHaveLength(lot.cars.filter((c) => c.trailer).length);
+
+    // z-order: the last trailer entity must come before the first car-body entity.
+    const ids = entities.map((e) => e.id);
+    const lastTrailerIdx = ids.map((id) => /:trailer$/.test(id)).lastIndexOf(true);
+    const firstCarBodyIdx = ids.findIndex((id) => /^car:\d+$/.test(id));
+    expect(lastTrailerIdx).toBeLessThan(firstCarBodyIdx);
   });
 });

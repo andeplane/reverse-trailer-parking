@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import type { Radians } from "../../engine/math/angles";
 import type { Seconds } from "../../engine/math/units";
 import type { ControlInput } from "../../engine/input/input-source";
-import { createVariantCatalog } from "./variants";
-import type { CarSpawn } from "./vehicle-types";
+import { obbMtv, type Obb } from "../../engine/math/obb";
+import { obstacleFootprints, rigFootprints } from "../collision/collision-system";
+import { allCarVariants, allTrailerVariants, createVariantCatalog } from "./variants";
+import { drivableCar, toRig, type CarSpawn, type World } from "./vehicle-types";
 import { createInitialRig, createWorld, stepWorld } from "./world";
 
 const catalog = createVariantCatalog();
@@ -97,3 +99,79 @@ describe("stepWorld", () => {
     expect(world).toEqual(before);
   });
 });
+
+describe("stepWorld collision invariant (US4)", () => {
+  const SIM_DT = (1 / 120) as Seconds;
+  const fullCatalog = createVariantCatalog({ cars: allCarVariants, trailers: allTrailerVariants });
+
+  function wall(cx: number, cy: number, halfL: number, halfW: number): Obb {
+    return { center: { x: cx, y: cy }, halfL, halfW, rotation: 0 as Radians };
+  }
+
+  function rigOverlapsObstacles(world: World): boolean {
+    const rig = toRig(drivableCar(world));
+    const footprints = rigFootprints(rig, world.catalog);
+    const obstacles = obstacleFootprints(world);
+    return footprints.some((f) => obstacles.some((o) => obbMtv(f, o) !== null));
+  }
+
+  function drive(world: World, input: ControlInput, steps: number): World {
+    let current = world;
+    for (let i = 0; i < steps; i++) {
+      current = stepWorld({ world: current, input, dt: SIM_DT });
+      expect(rigOverlapsObstacles(current)).toBe(false); // invariant holds EVERY step
+    }
+    return current;
+  }
+
+  it("blocks the rig at a wall at full throttle without overlap or tunnelling", () => {
+    const cars: CarSpawn[] = [
+      { variantId: "sedan", role: "drivable", position: { x: 0, y: 0 }, heading: 0 as Radians },
+    ];
+    const world = createWorld({ cars, boundary: [wall(8, 0, 0.5, 8)], catalog: fullCatalog });
+    const after = drive(world, { throttle: 1, steer: 0 }, 900); // ~7.5s hard into the wall
+    // Car stayed on the near side of the wall (never tunnelled to x > 7.5).
+    expect(drivableCar(after).rearAxle.x).toBeLessThan(7.5);
+  });
+
+  it("blocks a placed car obstacle", () => {
+    const cars: CarSpawn[] = [
+      { variantId: "sedan", role: "drivable", position: { x: 0, y: 0 }, heading: 0 as Radians },
+      { variantId: "suv", role: "placed", position: { x: 9, y: 0 }, heading: 0 as Radians },
+    ];
+    const world = createWorld({ cars, boundary: [], catalog: fullCatalog });
+    drive(world, { throttle: 1, steer: 0 }, 600);
+  });
+
+  it("blocks the trailer when reversing into a wall behind the rig", () => {
+    const cars: CarSpawn[] = [
+      {
+        variantId: "sedan",
+        role: "drivable",
+        position: { x: 0, y: 0 },
+        heading: 0 as Radians,
+        trailerVariantId: "caravan",
+      },
+    ];
+    const world = createWorld({ cars, boundary: [wall(-11, 0, 0.5, 8)], catalog: fullCatalog });
+    drive(world, { throttle: -1, steer: 0 }, 600);
+  });
+
+  it("stays finite and non-overlapping when wedged, steering hard in reverse into a wall", () => {
+    const cars: CarSpawn[] = [
+      {
+        variantId: "sedan",
+        role: "drivable",
+        position: { x: 0, y: 0 },
+        heading: 0 as Radians,
+        trailerVariantId: "caravan",
+      },
+    ];
+    const world = createWorld({ cars, boundary: [wall(-11, 0, 0.5, 10), wall(8, 0, 0.5, 10)], catalog: fullCatalog });
+    const after = drive(world, { throttle: -1, steer: 1 }, 800);
+    const car = drivableCar(after);
+    expect(Number.isFinite(car.rearAxle.x)).toBe(true);
+    expect(Number.isFinite(car.heading)).toBe(true);
+  });
+});
+

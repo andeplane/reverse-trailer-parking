@@ -2,7 +2,7 @@ import Phaser from "phaser";
 import type { Footprint, PhaserSurface, RectSpec } from "./phaser-surface";
 
 /** World units are metres; positions/sizes are scaled to pixels by this factor. */
-const PIXELS_PER_METRE = 42;
+const PIXELS_PER_METRE = 32;
 
 /**
  * Sprite art is authored nose-up (forward = image top). Our heading convention is 0 rad = +x with

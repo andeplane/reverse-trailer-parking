@@ -2,10 +2,16 @@ import { describe, expect, it } from "vitest";
 import type { Radians } from "../../engine/math/angles";
 import type { Metres, MPerS } from "../../engine/math/units";
 import type { CarVariant, TrailerVariant } from "./vehicle-types";
+import { deriveCarGeometry } from "./vehicle-geometry";
 import {
+  allCarVariants,
+  allTrailerVariants,
   caravanTrailerVariant,
   createVariantCatalog,
+  hatchbackCarVariant,
   sedanCarVariant,
+  suvCarVariant,
+  utilityTrailerVariant,
   validateCarVariant,
   validateTrailerVariant,
 } from "./variants";
@@ -14,6 +20,35 @@ describe("sedanCarVariant / caravanTrailerVariant", () => {
   it("are valid by construction", () => {
     expect(() => validateCarVariant(sedanCarVariant)).not.toThrow();
     expect(() => validateTrailerVariant(caravanTrailerVariant)).not.toThrow();
+  });
+});
+
+describe("catalog of variants (US4)", () => {
+  it("every bundled car and trailer variant is valid", () => {
+    for (const car of allCarVariants) expect(() => validateCarVariant(car)).not.toThrow();
+    for (const trailer of allTrailerVariants) expect(() => validateTrailerVariant(trailer)).not.toThrow();
+  });
+
+  it("exposes unique variant ids", () => {
+    const carIds = allCarVariants.map((c) => c.id);
+    const trailerIds = allTrailerVariants.map((t) => t.id);
+    expect(new Set(carIds).size).toBe(carIds.length);
+    expect(new Set(trailerIds).size).toBe(trailerIds.length);
+  });
+
+  it("the SUV has a longer wheelbase and smaller steer lock than the hatchback (larger turn radius)", () => {
+    const suv = deriveCarGeometry(suvCarVariant);
+    const hatch = deriveCarGeometry(hatchbackCarVariant);
+    expect(suv.wheelbase).toBeGreaterThan(hatch.wheelbase);
+    expect(suvCarVariant.steerMax).toBeLessThan(hatchbackCarVariant.steerMax);
+    // Minimum turn radius R = L / tan(steerMax): a larger L and smaller steerMax ⇒ larger R.
+    const suvRadius = suv.wheelbase / Math.tan(suvCarVariant.steerMax);
+    const hatchRadius = hatch.wheelbase / Math.tan(hatchbackCarVariant.steerMax);
+    expect(suvRadius).toBeGreaterThan(hatchRadius);
+  });
+
+  it("the utility trailer has a shorter, wider footprint than the caravan", () => {
+    expect(utilityTrailerVariant.bodyLength).toBeLessThan(caravanTrailerVariant.bodyLength);
   });
 });
 

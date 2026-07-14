@@ -64,6 +64,92 @@ export const sedanCarVariant: CarVariant = {
   texture: "car-red",
 };
 
+/** Longer wheelbase + smaller steer lock → a noticeably wider turning circle than the sedan. */
+export const suvCarVariant: CarVariant = {
+  id: "suv",
+  wheels: {
+    fl: { x: 1.55, y: 0.82 },
+    fr: { x: 1.55, y: -0.82 },
+    rl: { x: -1.65, y: 0.82 },
+    rr: { x: -1.65, y: -0.82 },
+  },
+  hitch: { x: -2.55, y: 0 },
+  bodyWidth: 1.95 as Metres,
+  bodyLength: 4.8 as Metres,
+  steerMax: 0.4887 as Radians, // ~28°
+  maxSpeedForward: 7.5 as MPerS,
+  maxSpeedReverse: 3.8 as MPerS,
+  accel: 2.7,
+  brake: 6,
+  steerRate: 2.2,
+  jackknifeMax: 1.396 as Radians,
+  texture: "car-blue",
+};
+
+/** Short wheelbase + tight steer → a nimble hatchback with a small turning circle. */
+export const hatchbackCarVariant: CarVariant = {
+  id: "hatchback",
+  wheels: {
+    fl: { x: 1.15, y: 0.75 },
+    fr: { x: 1.15, y: -0.75 },
+    rl: { x: -1.15, y: 0.75 },
+    rr: { x: -1.15, y: -0.75 },
+  },
+  hitch: { x: -1.95, y: 0 },
+  bodyWidth: 1.75 as Metres,
+  bodyLength: 3.9 as Metres,
+  steerMax: 0.6632 as Radians, // ~38°
+  maxSpeedForward: 8 as MPerS,
+  maxSpeedReverse: 4.2 as MPerS,
+  accel: 3.2,
+  brake: 6.5,
+  steerRate: 2.8,
+  jackknifeMax: 1.396 as Radians,
+  texture: "car-green",
+};
+
+export const coupeCarVariant: CarVariant = {
+  id: "coupe",
+  wheels: {
+    fl: { x: 1.3, y: 0.78 },
+    fr: { x: 1.3, y: -0.78 },
+    rl: { x: -1.3, y: 0.78 },
+    rr: { x: -1.3, y: -0.78 },
+  },
+  hitch: { x: -2.15, y: 0 },
+  bodyWidth: 1.85 as Metres,
+  bodyLength: 4.3 as Metres,
+  steerMax: 0.6109 as Radians,
+  maxSpeedForward: 8.5 as MPerS,
+  maxSpeedReverse: 4 as MPerS,
+  accel: 3.4,
+  brake: 6.5,
+  steerRate: 2.6,
+  jackknifeMax: 1.396 as Radians,
+  texture: "car-orange",
+};
+
+export const wagonCarVariant: CarVariant = {
+  id: "wagon",
+  wheels: {
+    fl: { x: 1.4, y: 0.8 },
+    fr: { x: 1.4, y: -0.8 },
+    rl: { x: -1.5, y: 0.8 },
+    rr: { x: -1.5, y: -0.8 },
+  },
+  hitch: { x: -2.5, y: 0 },
+  bodyWidth: 1.9 as Metres,
+  bodyLength: 4.8 as Metres,
+  steerMax: 0.5411 as Radians, // ~31°
+  maxSpeedForward: 7.8 as MPerS,
+  maxSpeedReverse: 4 as MPerS,
+  accel: 2.9,
+  brake: 6,
+  steerRate: 2.4,
+  jackknifeMax: 1.396 as Radians,
+  texture: "car-purple",
+};
+
 export const caravanTrailerVariant: TrailerVariant = {
   id: "caravan",
   hitch: { x: 2.2, y: 0 }, // ahead of the box front; the gap is the drawbar
@@ -75,6 +161,29 @@ export const caravanTrailerVariant: TrailerVariant = {
   bodyLength: 3.1 as Metres,
   texture: "trailer-white",
 };
+
+/** A short, wide flat-bed utility trailer — different footprint + shorter length than the caravan. */
+export const utilityTrailerVariant: TrailerVariant = {
+  id: "utility",
+  hitch: { x: 1.6, y: 0 },
+  axleWheels: {
+    l: { x: -0.6, y: 0.75 },
+    r: { x: -0.6, y: -0.75 },
+  },
+  bodyWidth: 1.9 as Metres,
+  bodyLength: 2.1 as Metres,
+  texture: "trailer-utility",
+};
+
+export const allCarVariants: CarVariant[] = [
+  sedanCarVariant,
+  suvCarVariant,
+  hatchbackCarVariant,
+  coupeCarVariant,
+  wagonCarVariant,
+];
+
+export const allTrailerVariants: TrailerVariant[] = [caravanTrailerVariant, utilityTrailerVariant];
 
 export function createVariantCatalog(
   args: { cars?: CarVariant[]; trailers?: TrailerVariant[] } = {},

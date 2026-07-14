@@ -1,39 +1,33 @@
-import type { Radians } from "./engine/math/angles";
 import { performanceClock } from "./engine/loop/clock";
 import { createKeyboardInput } from "./engine/input/keyboard-input";
 import { createPhaserRenderer } from "./engine/render/phaser-renderer";
 import { createPhaserSurface } from "./engine/render/create-phaser-surface";
-import { createVariantCatalog } from "./game/vehicle/variants";
-import { createWorld } from "./game/vehicle/world";
-import type { CarSpawn } from "./game/vehicle/vehicle-types";
+import { createParkingLotWorld } from "./game/vehicle/world-setup";
 import { createSandbox, type Sandbox } from "./game/sandbox";
+
+const WORLD_TEXTURES: Record<string, string> = {
+  "car-red": "/assets/car-red.png",
+  "car-blue": "/assets/car-blue.png",
+  "car-green": "/assets/car-green.png",
+  "car-orange": "/assets/car-orange.png",
+  "car-purple": "/assets/car-purple.png",
+  "trailer-white": "/assets/trailer-white.png",
+  "trailer-utility": "/assets/trailer-utility.png",
+  "lot-background": "/assets/lot-background.png",
+};
 
 async function main(): Promise<void> {
   const gameRoot = document.getElementById("game-root");
   const controlsRoot = document.getElementById("controls-root");
   if (!gameRoot || !controlsRoot) throw new Error("Missing #game-root/#controls-root in index.html");
 
-  const catalog = createVariantCatalog();
   const surface = await createPhaserSurface({
     parent: gameRoot,
-    textures: {
-      "car-red": "/assets/car-red.png",
-      "trailer-white": "/assets/trailer-white.png",
-      "lot-background": "/assets/lot-background.png",
-    },
+    textures: WORLD_TEXTURES,
     background: { texture: "lot-background", widthMetres: 46, heightMetres: 46 },
   });
 
-  const cars: CarSpawn[] = [
-    {
-      variantId: "sedan",
-      role: "drivable",
-      position: { x: 0, y: 0 },
-      heading: 0 as Radians,
-      trailerVariantId: "caravan",
-    },
-  ];
-  const world = createWorld({ cars, boundary: [], catalog });
+  const world = createParkingLotWorld();
 
   const steeringEl = document.createElement("div");
   steeringEl.id = "steering-indicator";

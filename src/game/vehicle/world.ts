@@ -3,6 +3,7 @@ import type { MPerS, Seconds } from "../../engine/math/units";
 import type { Vec2 } from "../../engine/math/vec2";
 import type { Obb } from "../../engine/math/obb";
 import type { ControlInput } from "../../engine/input/input-source";
+import { obstacleFootprints, resolveRigCollision } from "../collision/collision-system";
 import { stepRig } from "./vehicle-model";
 import {
   drivableCar,
@@ -56,11 +57,22 @@ export function createInitialRig(args: {
   return toRig(car);
 }
 
-/** Advances only the drivable rig via `stepRig`; placed cars are immovable. No collision yet. */
+/**
+ * Advances only the drivable rig via `stepRig`, then resolves collision against every placed car
+ * (and its trailer) and the boundary so the rig can never overlap or tunnel through them. Placed
+ * cars are immovable.
+ */
 export function stepWorld(args: { world: World; input: ControlInput; dt: Seconds }): World {
   const { world, input, dt } = args;
-  const rig = toRig(drivableCar(world));
-  const steppedCar = fromRig(stepRig({ rig, input, dt, catalog: world.catalog }));
+  const prevRig = toRig(drivableCar(world));
+  const sweptRig = stepRig({ rig: prevRig, input, dt, catalog: world.catalog });
+  const { rig: resolvedRig } = resolveRigCollision({
+    prevRig,
+    sweptRig,
+    obstacles: obstacleFootprints(world),
+    catalog: world.catalog,
+  });
+  const steppedCar = fromRig(resolvedRig);
   const cars = world.cars.map((car) => (car.role === "drivable" ? steppedCar : car));
   return { ...world, cars };
 }
