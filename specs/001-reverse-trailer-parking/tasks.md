@@ -97,8 +97,8 @@ articulation; geometry + `stepRig` fully unit-tested. **MVP demoable without hum
 **Independent Test**: In a desktop browser, hold ↑/↓ to accelerate/brake/reverse, ←/→ to steer
 (wheels + indicator move), press R to reset — all via keyboard.
 
-- [ ] T030 [US2] Implement `src/engine/input/keyboard-input.ts` + test (jsdom): `createKeyboardInput({target,steerRate?,onReset?})` — ↑/↓ → throttle ±1; ←/→ ramp steer toward ∓1 held / recenter on release; `R` → `onReset`; clamped `ControlInput` from `read()`; `dispose()` detaches. Cover ramp, recenter, combined throttle+steer, reset. Depends on T013.
-- [ ] T031 [US2] Update `src/main.ts` to use `createKeyboardInput` (on `window`) for non-touch and wire `onReset` → `sandbox.reset()`. Depends on T029, T030.
+- [X] T030 [US2] Implement `src/engine/input/keyboard-input.ts` + test (jsdom): `createKeyboardInput({target,steerRate?,onReset?})` — ↑/↓ → throttle ±1; ←/→ ramp steer toward ∓1 held / recenter on release; `R` → `onReset`; clamped `ControlInput` from `read()`; `dispose()` detaches. Cover ramp, recenter, combined throttle+steer, reset. Depends on T013.
+- [X] T031 [US2] Update `src/main.ts` to use `createKeyboardInput` (on `window`) for non-touch and wire `onReset` → `sandbox.reset()`. Depends on T029, T030.
 
 **Checkpoint**: Rig fully drivable by keyboard on desktop; US1 auto-drive still available.
 

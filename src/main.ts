@@ -1,12 +1,12 @@
 import type { Radians } from "./engine/math/angles";
 import { performanceClock } from "./engine/loop/clock";
-import { createScriptedInput, demoProgram } from "./engine/input/scripted-input";
+import { createKeyboardInput } from "./engine/input/keyboard-input";
 import { createPhaserRenderer } from "./engine/render/phaser-renderer";
 import { createPhaserSurface } from "./engine/render/create-phaser-surface";
 import { createVariantCatalog } from "./game/vehicle/variants";
 import { createWorld } from "./game/vehicle/world";
 import type { CarSpawn } from "./game/vehicle/vehicle-types";
-import { createSandbox } from "./game/sandbox";
+import { createSandbox, type Sandbox } from "./game/sandbox";
 
 async function main(): Promise<void> {
   const gameRoot = document.getElementById("game-root");
@@ -51,13 +51,21 @@ async function main(): Promise<void> {
   });
   controlsRoot.appendChild(steeringEl);
 
+  // Forward reference so the reset key can reach the sandbox created just below.
+  const sandboxRef: { current?: Sandbox } = {};
+  const input = createKeyboardInput({
+    target: window,
+    onReset: () => sandboxRef.current?.reset(),
+  });
+
   const sandbox = createSandbox({
     clock: performanceClock,
-    input: createScriptedInput({ program: demoProgram, clock: performanceClock, loop: true }),
+    input,
     renderer: createPhaserRenderer({ surface }),
     world,
     steeringEl,
   });
+  sandboxRef.current = sandbox;
 
   function frame(): void {
     sandbox.tick();
