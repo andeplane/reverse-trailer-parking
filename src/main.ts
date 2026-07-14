@@ -1,7 +1,10 @@
 import { performanceClock } from "./engine/loop/clock";
+import type { InputSource } from "./engine/input/input-source";
 import { createKeyboardInput } from "./engine/input/keyboard-input";
+import { createTouchInput } from "./engine/input/touch-input";
 import { createPhaserRenderer } from "./engine/render/phaser-renderer";
 import { createPhaserSurface } from "./engine/render/create-phaser-surface";
+import { createControlsOverlay } from "./game/hud/controls-overlay";
 import { createParkingLotWorld } from "./game/vehicle/world-setup";
 import { createSandbox, type Sandbox } from "./game/sandbox";
 
@@ -31,26 +34,25 @@ async function main(): Promise<void> {
 
   const steeringEl = document.createElement("div");
   steeringEl.id = "steering-indicator";
-  Object.assign(steeringEl.style, {
-    position: "absolute",
-    bottom: "16px",
-    left: "16px",
-    width: "72px",
-    height: "72px",
-    backgroundImage: "url(/assets/steering-wheel.png)",
-    backgroundSize: "contain",
-    backgroundRepeat: "no-repeat",
-    transformOrigin: "center",
-    filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.6))",
-  });
+  steeringEl.style.backgroundImage = "url(/assets/steering-wheel.png)";
   controlsRoot.appendChild(steeringEl);
 
-  // Forward reference so the reset key can reach the sandbox created just below.
+  // Forward reference so the reset control can reach the sandbox created just below.
   const sandboxRef: { current?: Sandbox } = {};
-  const input = createKeyboardInput({
-    target: window,
-    onReset: () => sandboxRef.current?.reset(),
-  });
+  const reset = (): void => sandboxRef.current?.reset();
+
+  const forceTouch = new URLSearchParams(window.location.search).has("touch");
+  const isTouch =
+    forceTouch || window.matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0;
+
+  let input: InputSource;
+  if (isTouch) {
+    const overlay = createControlsOverlay({ parent: controlsRoot });
+    overlay.setOnReset(reset);
+    input = createTouchInput({ controls: overlay });
+  } else {
+    input = createKeyboardInput({ target: window, onReset: reset });
+  }
 
   const sandbox = createSandbox({
     clock: performanceClock,

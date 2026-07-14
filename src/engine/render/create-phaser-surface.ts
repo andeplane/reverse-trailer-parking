@@ -91,16 +91,23 @@ export function createPhaserSurface(args: {
       },
     };
 
-    new Phaser.Game({
+    const game = new Phaser.Game({
       type: Phaser.AUTO,
       parent,
       scale: {
-        mode: Phaser.Scale.FIT,
+        mode: Phaser.Scale.RESIZE,
         autoCenter: Phaser.Scale.CENTER_BOTH,
         width: window.innerWidth,
         height: window.innerHeight,
       },
       scene: [WorldScene],
     });
+
+    // Keep the canvas filling the viewport across resizes and orientation changes.
+    const onResize = (): void => {
+      game.scale.resize(window.innerWidth, window.innerHeight);
+    };
+    window.addEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize);
   });
 }

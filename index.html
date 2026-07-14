@@ -48,6 +48,88 @@
       #controls-root > * {
         pointer-events: auto;
       }
+
+      /* Steering-wheel gauge (both desktop and mobile). */
+      #steering-indicator {
+        position: absolute;
+        top: 16px;
+        left: 16px;
+        width: 64px;
+        height: 64px;
+        background-size: contain;
+        background-repeat: no-repeat;
+        transform-origin: center;
+        filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6));
+      }
+
+      /* Touch controls overlay. */
+      .controls-overlay {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+      .controls-overlay > * {
+        pointer-events: auto;
+      }
+      .ctrl-btn {
+        position: absolute;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 2px solid rgba(255, 255, 255, 0.35);
+        border-radius: 50%;
+        background: rgba(28, 30, 34, 0.55);
+        color: #fff;
+        font-size: 30px;
+        line-height: 1;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .ctrl-forward,
+      .ctrl-reverse {
+        width: 80px;
+        height: 80px;
+        left: max(20px, env(safe-area-inset-left, 0px));
+      }
+      .ctrl-forward {
+        bottom: 130px;
+      }
+      .ctrl-reverse {
+        bottom: 32px;
+      }
+      .ctrl-reset {
+        width: 56px;
+        height: 56px;
+        right: max(20px, env(safe-area-inset-right, 0px));
+        top: max(20px, env(safe-area-inset-top, 0px));
+        font-size: 26px;
+      }
+      .ctrl-steer {
+        position: absolute;
+        right: max(24px, env(safe-area-inset-right, 0px));
+        bottom: 32px;
+        width: 56px;
+        height: 46vh;
+        max-height: 320px;
+        min-height: 180px;
+        writing-mode: vertical-lr;
+        direction: rtl;
+        accent-color: #2f7fd6;
+      }
+
+      /* Landscape: keep the drive buttons reachable without overlapping the slider. */
+      @media (orientation: landscape) and (max-height: 480px) {
+        .ctrl-forward,
+        .ctrl-reverse {
+          width: 68px;
+          height: 68px;
+        }
+        .ctrl-forward {
+          bottom: 108px;
+        }
+        .ctrl-steer {
+          height: 70vh;
+        }
+      }
     </style>
   </head>
   <body>
