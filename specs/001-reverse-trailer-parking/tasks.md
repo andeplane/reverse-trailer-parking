@@ -144,12 +144,12 @@ move, drag the right slider to steer, both at once; controls unclipped, no scrol
 
 ## Phase 7: Polish & Cross-Cutting Concerns
 
-- [ ] T043 [P] Tune variant geometry + feel params in `src/game/vehicle/variants.ts` (speeds, steer lock, trailer length, hitch/wheel positions, jackknife limit) from T042 findings.
-- [ ] T044 [P] Optional: complete collision **sliding** (tangent projection) in `src/game/collision/collision-system.ts` if deferred from T033, keeping determinism; add tests.
-- [ ] T045 [P] Run `pnpm test --coverage` (config in `vitest.config.ts`); confirm ≥80% (aim ~100%); add tests for uncovered branches under `src/**` (leave only genuinely-hard glue uncovered, per research Decision 8).
-- [ ] T046 [P] Ensure `pnpm exec tsc --noEmit` clean and `pnpm lint` passes with **zero `any`** in `src/`.
-- [ ] T047 Run the full `quickstart.md` flow end-to-end (dev + drive desktop & mobile, collide, swap variants, tests, `pnpm build`).
-- [ ] T048 [P] Reconcile docs if anything diverged (`CLAUDE.md`, plan/research) and confirm generated sprites are committed by name.
+- [X] T043 [P] Tune variant geometry + feel params in `src/game/vehicle/variants.ts` (speeds, steer lock, trailer length, hitch/wheel positions, jackknife limit) from T042 findings.
+- [X] T044 [P] Optional: complete collision **sliding** (tangent projection) in `src/game/collision/collision-system.ts` if deferred from T033, keeping determinism; add tests.
+- [X] T045 [P] Run `pnpm test --coverage` (config in `vitest.config.ts`); confirm ≥80% (aim ~100%); add tests for uncovered branches under `src/**` (leave only genuinely-hard glue uncovered, per research Decision 8).
+- [X] T046 [P] Ensure `pnpm exec tsc --noEmit` clean and `pnpm lint` passes with **zero `any`** in `src/`.
+- [X] T047 Run the full `quickstart.md` flow end-to-end (dev + drive desktop & mobile, collide, swap variants, tests, `pnpm build`).
+- [X] T048 [P] Reconcile docs if anything diverged (`CLAUDE.md`, plan/research) and confirm generated sprites are committed by name.
 
 ---
 

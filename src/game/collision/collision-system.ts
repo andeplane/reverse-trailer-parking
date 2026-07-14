@@ -1,5 +1,5 @@
 import { normaliseAngle, type Radians } from "../../engine/math/angles";
-import { add, length, type Vec2 } from "../../engine/math/vec2";
+import { add, dot, length, normalise, scale, sub, type Vec2 } from "../../engine/math/vec2";
 import { obbMtv, type Obb } from "../../engine/math/obb";
 import { carFootprint, hitchWorld, trailerFootprint } from "../vehicle/vehicle-geometry";
 import {
@@ -13,6 +13,7 @@ import {
 
 const DEFAULT_BISECT_ITERATIONS = 14;
 const MTV_ITERATIONS = 8;
+const SLIDE_ITERATIONS = 8;
 /** Path samples along the taken step; makes contact detection tunnelling-proof for coarse steps. */
 const PATH_SAMPLES = 32;
 
@@ -105,6 +106,62 @@ function pushOut(rig: Rig, obstacles: Obb[], catalog: VariantCatalog): Rig {
   return current;
 }
 
+/** Deepest separation normal (unit) of a rig against obstacles, or null if clear. */
+function contactNormal(rig: Rig, obstacles: Obb[], catalog: VariantCatalog): Vec2 | null {
+  const footprints = rigFootprints(rig, catalog);
+  let deepest: Vec2 | null = null;
+  let deepestMag = 0;
+  for (const f of footprints) {
+    for (const o of obstacles) {
+      const mtv = obbMtv(f, o);
+      if (mtv) {
+        const mag = length(mtv);
+        if (mag > deepestMag) {
+          deepestMag = mag;
+          deepest = mtv;
+        }
+      }
+    }
+  }
+  return deepest ? normalise(deepest) : null;
+}
+
+/**
+ * Slides the rig along the contact tangent: the leftover motion into the surface is projected onto
+ * the tangent so the rig grazes rather than dead-stops. Deterministic; falls back to no slide.
+ */
+function slideAlongContact(args: {
+  contactPose: Rig;
+  sweptRig: Rig;
+  blockedPose: Rig;
+  obstacles: Obb[];
+  catalog: VariantCatalog;
+}): Rig {
+  const { contactPose, sweptRig, blockedPose, obstacles, catalog } = args;
+  const remaining = sub(sweptRig.car.rearAxle, contactPose.car.rearAxle);
+  if (length(remaining) < 1e-6) return contactPose;
+
+  const normal = contactNormal(blockedPose, obstacles, catalog);
+  if (!normal) return contactPose;
+
+  const tangent = sub(remaining, scale(normal, dot(remaining, normal)));
+  if (length(tangent) < 1e-6) return contactPose;
+
+  const full = translateRig(contactPose, tangent);
+  if (!overlapsAny(rigFootprints(full, catalog), obstacles)) return full;
+
+  // Bisect the tangential move for the furthest clear slide.
+  let lo = 0;
+  let hi = 1;
+  for (let i = 0; i < SLIDE_ITERATIONS; i++) {
+    const mid = (lo + hi) / 2;
+    const pose = translateRig(contactPose, scale(tangent, mid));
+    if (overlapsAny(rigFootprints(pose, catalog), obstacles)) hi = mid;
+    else lo = mid;
+  }
+  return translateRig(contactPose, scale(tangent, lo));
+}
+
 /**
  * Resolves the drivable rig against immovable obstacles: block-at-contact by bisecting the taken
  * sub-step (tunnelling-proof because `prevRig` is known clear), then MTV push-out of any residue.
@@ -149,5 +206,7 @@ export function resolveRigCollision(args: {
   }
 
   const contactPose = lerpRig(prevRig, sweptRig, lo, catalog);
-  return { rig: pushOut(contactPose, obstacles, catalog), contacted: true };
+  const blockedPose = lerpRig(prevRig, sweptRig, hi, catalog); // barely overlapping → clean normal
+  const slid = slideAlongContact({ contactPose, sweptRig, blockedPose, obstacles, catalog });
+  return { rig: pushOut(slid, obstacles, catalog), contacted: true };
 }

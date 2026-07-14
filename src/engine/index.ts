@@ -1,7 +1,6 @@
 export type { Radians } from "./math/angles";
 export { clamp, lerp, normaliseAngle, safeTan } from "./math/angles";
 export type { Metres, MPerS, Seconds } from "./math/units";
-export { metres, mPerS, seconds } from "./math/units";
 export type { Vec2 } from "./math/vec2";
 export { add, dot, length, midpoint, normalise, perp, rotate, scale, sub, vec2 } from "./math/vec2";
 export type { Obb } from "./math/obb";

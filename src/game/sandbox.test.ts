@@ -137,6 +137,26 @@ describe("createSandbox", () => {
     expect(renderer.disposed).toBe(true);
   });
 
+  it("falls back to the default fixed timestep when dt is omitted", () => {
+    const clock = new FakeClock();
+    const input = fakeInput({ throttle: 1, steer: 0 });
+    const renderer = fakeRenderer();
+    const world = buildWorld();
+    const sandbox = createSandbox({ clock, input, renderer, world });
+    expect(() => sandbox.tick(1000 / 60)).not.toThrow();
+    expect(renderer.syncCalls.length).toBeGreaterThan(0);
+  });
+
+  it("ticks without a steering element bound (no HUD wiring)", () => {
+    const clock = new FakeClock();
+    const input = fakeInput({ throttle: 1, steer: 0.5 });
+    const renderer = fakeRenderer();
+    const world = buildWorld();
+    const sandbox = createSandbox({ clock, input, renderer, world, dt: (1 / 60) as Seconds });
+    expect(() => sandbox.tick(1000 / 60)).not.toThrow();
+    expect(renderer.syncCalls.length).toBeGreaterThan(0);
+  });
+
   it("updates a bound steering indicator element", () => {
     const clock = new FakeClock();
     const input = fakeInput({ throttle: 0, steer: 1 });

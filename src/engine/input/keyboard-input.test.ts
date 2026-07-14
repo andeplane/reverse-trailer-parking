@@ -89,6 +89,21 @@ describe("createKeyboardInput", () => {
     expect(input.read().steer).toBe(0);
   });
 
+  it("recentres a negative steer toward 0 after ArrowRight is released", () => {
+    const target = new EventTarget();
+    const clock = new FakeClock();
+    const input = createKeyboardInput({ target, clock, steerRate: 2 });
+    input.read();
+    press(target, "ArrowRight");
+    clock.advance(500);
+    input.read(); // steer at -1
+    release(target, "ArrowRight");
+    clock.advance(250);
+    expect(input.read().steer).toBeCloseTo(-0.5);
+    clock.advance(500);
+    expect(input.read().steer).toBe(0);
+  });
+
   it("supports combined throttle + steer", () => {
     const target = new EventTarget();
     const clock = new FakeClock();

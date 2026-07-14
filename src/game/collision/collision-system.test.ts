@@ -156,6 +156,23 @@ describe("resolveRigCollision", () => {
     expect(Number.isFinite(result.rig.trailer?.heading ?? 0)).toBe(true);
   });
 
+  it("slides along a wall approached at an angle instead of dead-stopping", () => {
+    // Approach the front wall at a shallow angle: some tangential (y) motion should survive.
+    const prev = rigAt(0, 0, false);
+    const swept = createInitialRig({ variantId: "sedan", position: { x: 5, y: 2 }, heading: 0 as Radians });
+    const result = resolveRigCollision({ prevRig: prev, sweptRig: swept, obstacles: frontWall, catalog });
+    expect(result.contacted).toBe(true);
+    expect(anyOverlap(rigFootprints(result.rig, catalog), frontWall)).toBe(false);
+    // Blocked in x (can't reach x=5) but slid in y toward the target.
+    expect(result.rig.car.rearAxle.x).toBeLessThan(5);
+    expect(result.rig.car.rearAxle.y).toBeGreaterThan(0.2);
+  });
+
+  it("does not slide sideways for a head-on perpendicular approach", () => {
+    const result = resolveRigCollision({ prevRig: rigAt(0), sweptRig: rigAt(4), obstacles: frontWall, catalog });
+    expect(result.rig.car.rearAxle.y).toBeCloseTo(0);
+  });
+
   it("pushes out of a residual overlap when the previous pose already touches", () => {
     // prev's front bumper (x≈3.6) pokes ~0.6m into the wall front (x=3.0) → resolver must clear it.
     const overlappingWall = [wall(3.5, 0, 0.5, 6)];

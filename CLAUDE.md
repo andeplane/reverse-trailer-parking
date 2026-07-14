@@ -10,6 +10,29 @@ When things change (architecture, game engine choice +++), ALWAYS update this fi
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Rendering (as built — Milestone 1)
+
+The world is drawn as **realistic AI-generated top-down sprites**, matching a polished casual
+parking game (glossy cars, textured asphalt lot with bay lines + grass borders). Details:
+
+- **One sprite per vehicle body** (car + trailer), scaled to its **derived footprint**
+  (`bodyWidth`×`bodyLength`). Sprites are authored **nose-up** and trimmed to their true bounds so
+  footprint scaling is proportional (no stretching). Wheels are **baked into the sprite art** — we do
+  NOT render per-wheel entities. Steering is shown via the **steering-wheel HUD gauge** (top-left) plus
+  the car's visible turning. The trailer is linked to the car hitch by a thin **vector drawbar rect**.
+- `src/game/view/world-view.ts` maps `World → Entity[]` where each `Entity` is a `sprite` or a `rect`
+  (`EntityVisual` union). `src/engine/render/create-phaser-surface.ts` owns the Phaser glue: `42→32`
+  pixels/metre, a **y-flip** (world +y up ↔ screen +y down) and rotation mapping `π/2 − θ` for nose-up
+  sprites (`−θ` for +x-forward rects), plus the static lot background image and viewport RESIZE handling.
+- **Variant geometry is tuned to match its sprite's aspect ratio** so footprints line up with the art.
+  Assets (committed by name in `public/assets/`): `car-{red,blue,green,orange,purple}.png`,
+  `trailer-{white,utility}.png`, `lot-background.png`, `steering-wheel.png` (HUD). The player is the
+  red sedan+caravan; placed cars use the other colours/variants. Regenerate via the `ai-image-generator`
+  skill (GPT Image 1.5, transparent, "top-down, straight overhead, no perspective/tilt"), then trim to
+  opaque bounds.
+- Collision is our own OBB/SAT (`src/game/collision/collision-system.ts`): path-sampled
+  bisect-to-contact + deepest-MTV push-out + tangent **sliding**, deterministic, tunnelling-proof.
+
 ## What This Repo Is
 
 A TypeScript game.

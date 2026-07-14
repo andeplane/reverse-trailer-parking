@@ -78,6 +78,22 @@ describe("createControlsOverlay", () => {
     expect(resets).toBe(1);
   });
 
+  it("suppresses default touch gestures on the overlay (no scroll/zoom)", () => {
+    const root = parent.querySelector(".controls-overlay") as HTMLElement;
+    const touchstart = new Event("touchstart", { cancelable: true });
+    root.dispatchEvent(touchstart);
+    expect(touchstart.defaultPrevented).toBe(true);
+    const touchmove = new Event("touchmove", { cancelable: true });
+    root.dispatchEvent(touchmove);
+    expect(touchmove.defaultPrevented).toBe(true);
+  });
+
+  it("prevents default on a button pointerdown (no synthetic click/scroll)", () => {
+    const down = new Event("pointerdown", { cancelable: true });
+    forwardButton().dispatchEvent(down);
+    expect(down.defaultPrevented).toBe(true);
+  });
+
   it("removes its DOM on dispose()", () => {
     expect(parent.querySelector(".controls-overlay")).not.toBeNull();
     overlay.dispose();
