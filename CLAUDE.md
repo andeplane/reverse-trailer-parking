@@ -137,6 +137,7 @@ in one place). Extract cohesive systems/modules. Split only when it creates a
 genuinely cleaner separation — a well-named larger module beats several poorly
 named tiny ones.
 
+
 ### DRY
 
 Extract repeated logic: pure helpers to `src/**/utils`, shared systems to their
@@ -189,6 +190,28 @@ test: {
   },
 }
 ```
+
+## Sprites & Art Assets
+
+Game sprites and art are generated with AI via the **`ai-image-generator`
+skill** (`.claude/skills/ai-image-generator/`). When you need a new sprite,
+background, icon, or any visual asset, use that skill — do not hand-roll API
+calls or reach for other tools.
+
+- **Transparent sprites** (the common case — characters, items, tiles that sit
+  on top of the game): use **GPT Image 1.5** (`gpt-image-1.5`) with
+  `background: "transparent"` and `output_format: "png"`. GPT Image 2 **cannot**
+  do transparency, so it's the wrong choice for most sprites.
+- **Text-heavy or opaque art** (title screens, UI panels with copy, banners):
+  use **GPT Image 2** (`gpt-image-2`).
+- Requires `OPENAI_API_KEY` in the environment.
+- Prompt with the skill's 5-part framework and always end with
+  "No text, no watermarks, no logos" (unless text is the point).
+- Save generated sprites into the game's asset directory (e.g. `src/game/assets/`
+  or `public/assets/`), not the scratchpad, and commit them by name.
+- For a matched set (e.g. a character's animation frames or a themed tileset),
+  use GPT Image 2's batch mode and/or keep prompts consistent so style, palette,
+  and scale stay coherent across sprites.
 
 ## Git Rules
 
