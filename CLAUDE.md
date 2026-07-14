@@ -1,6 +1,7 @@
 <!-- SPECKIT START -->
-For additional context about technologies to be used, project structure,
-shell commands, and other important information, read the current plan
+Active feature plan: `specs/001-reverse-trailer-parking/plan.md`
+(with `research.md`, `data-model.md`, `contracts/`, `quickstart.md` alongside it).
+Read it for technologies, project structure, the vehicle-motion math, and test strategy.
 <!-- SPECKIT END -->
 
 # CLAUDE.md
@@ -13,17 +14,83 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A TypeScript game.
 
-**Game engine: UNDECIDED.** The leading candidate is **Phaser**, but this is
-not yet committed — do not assume Phaser, and equally do not assume there is no
-engine. Until the choice is made and recorded here, keep engine-specific code
-behind our own thin abstractions so the decision stays reversible. **When the
-engine is chosen, update this section immediately** with the choice, the
-version, and how it's wired in (per the update rule at the top of this file).
+**Game engine: Phaser 3** (decided 2026-07-14). Phaser is used **only for
+rendering, input, camera, and viewport scaling**, confined to `src/engine/` as a
+thin adapter. **We do NOT use Phaser's physics** (Arcade or Matter) for the
+vehicle — the car+trailer motion is our own code (see "Vehicle physics" below).
+Keep all Phaser imports inside `src/engine/`; `src/game/` stays engine-agnostic
+so the choice remains reversible.
 
-Regardless of the engine choice, keep **game-agnostic systems separated from
-game-specific logic** (see Architecture Principles). If we adopt an engine like
-Phaser, "our engine layer" becomes a thin adapter around it rather than a
-from-scratch implementation.
+Keep **game-agnostic systems separated from game-specific logic** (see
+Architecture Principles): "our engine layer" is a thin adapter around Phaser, not
+a from-scratch renderer.
+
+## Vehicle physics — our own kinematic model (NOT a physics engine)
+
+The car+trailer motion is hand-written, not from a rigid-body engine. Rules:
+
+- **Simple longitudinal dynamics**: throttle accelerates gradually up to a max
+  speed; releasing the throttle brakes to a full stop (no infinite coasting, no
+  instant jump to full speed). Same for reverse.
+- **Direction emerges from the wheels, not a set heading**: wheels roll in the
+  direction they point and cannot slide sideways. The car's turning is a
+  geometric consequence of steer angle + wheelbase + travel — never a directly
+  assigned heading. Do not "just rotate the car by steerAngle."
+- **Trailer is articulated geometry**: connected at a hitch; its motion depends
+  on the hitch angle, trailer length (hitch-to-axle), and trailer axle/wheel
+  positions. Forward driving lets the trailer settle in line; reversing can
+  swing it toward a **jackknife**, which is **clamped** (trailer never overlaps
+  or passes through the car) with no snapping/teleport/NaN.
+- **Geometry is EXPLICIT COORDINATES, scalars are DERIVED**: every vehicle
+  variant is authored as the (x, y) positions of its wheels, its body
+  width/length, and (cars) the (x, y) hitch position. Derive wheelbase `L`,
+  hitch offset `h`, trailer length `d`, track width, and the collision footprint
+  from those coordinates — never hand-enter a scalar `wheelbase`. The bicycle +
+  articulation equations are reused with the derived values, so the math is
+  correct for any variant.
+- **Variants are data, not code**: cars/trailers differ by geometry (length,
+  wheel positions, max steer angle, hitch position) in a validated catalog.
+  Adding a variant = adding data.
+- **One vehicle type, two roles**: a `Car` is `placed` (static) OR `drivable`
+  (player-controlled) — a runtime field, not a subclass. A `World` holds many
+  cars (one drivable + N placed). ANY car may tow 0 or 1 trailer (placed cars
+  included).
+- **Collision is our own, not an engine**: vehicle footprints are oriented boxes
+  (OBB); overlap via SAT + MTV (`src/engine/math/obb.ts`). The drivable rig (car
+  AND trailer) cannot penetrate placed cars or the boundary — resolve by
+  bisecting the sub-step to contact + MTV push-out (tunnelling-proof, sliding is
+  a bonus). Placed cars are immovable (no bounce/momentum/damage this milestone).
+- **Deterministic**: same input sequence + elapsed time → same motion AND same
+  collision outcome. Use a fixed timestep and injected `Clock`; keep `stepWorld`
+  pure so the model is unit-testable.
+
+## MOBILE-FIRST — NEVER forget this
+
+This game **must work well on phones**. This is a permanent, non-negotiable
+constraint on every feature, layout, and control decision — treat it as always
+in scope:
+
+- Responsive and fully usable from ~360px wide up to desktop, in **both portrait
+  and landscape**; no clipped controls, no horizontal page scroll.
+- Touch controls are first-class: on-screen forward/reverse buttons + a vertical
+  steering slider on the **right** edge (sets steer angle proportionally).
+  Support multi-touch (drive + steer at once).
+- Touch must not trigger page scroll, pinch-zoom, or text selection.
+- Large, thumb-reachable touch targets; smooth real-time motion on a mid-range
+  phone.
+- Always show a steering-angle indicator (steering-wheel/gauge UI) in addition
+  to the wheels drawn on the car, on both desktop and mobile.
+
+Desktop controls: Left/Right steer, Up = forward, Down = reverse.
+
+## Visual style — 100% straight-down top-down (NEVER angled)
+
+The game is a **pure orthographic overhead** 2D game, like classic top-down parking games
+(see the reference image). The camera looks **straight down** — **no tilt, no perspective,
+no isometric skew, no 3D/pseudo-3D**. It may pan (follow the rig) and zoom, but never
+rotates to an angled view. **All world sprites are flat overhead (roof-view) art**, rotated
+in-plane by heading; generate car/trailer sprites as pure top-down views, not 3/4 or angled.
+(The steering-wheel HUD indicator is exempt — it's a flat UI icon.)
 
 Tooling is **Vite** + **TypeScript** (strict) + **Vitest**. This is a plain TS
 project, not a React/CDF app.
