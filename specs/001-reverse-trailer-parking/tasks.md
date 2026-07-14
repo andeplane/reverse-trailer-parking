@@ -28,13 +28,13 @@ Phaser-free simulation; **explicit-coordinate geometry (wheels + hitch), derived
 
 **Purpose**: Bootstrap the empty repo into a runnable Vite + TS(strict) + Vitest + Phaser project.
 
-- [ ] T001 Initialize pnpm project: `package.json` with scripts (`dev`,`build`,`test`,`test:watch`,`lint`,`lint:fix`) and deps — `phaser`; devDeps `vite`, `typescript`, `vitest`, `@vitest/coverage-v8`, `jsdom`, `eslint`, `typescript-eslint`. `pnpm` only.
-- [ ] T002 [P] Add `tsconfig.json` (strict, `noUncheckedIndexedAccess`, ES2022, bundler resolution, `src/**`).
-- [ ] T003 [P] Add `vite.config.ts` (root, `public/` assets).
-- [ ] T004 [P] Add `vitest.config.ts`: coverage `provider: v8`, `include: ['src/**/*.ts']`, `exclude: ['src/**/*.test.ts','src/**/*.d.ts','src/main.ts']`, `thresholds.lines: 80`; `environmentMatchGlobs` → `jsdom` for `*hud*`/`*overlay*`/`*input*` tests, `node` otherwise.
-- [ ] T005 [P] Add `eslint.config.js` (typescript-eslint, `no-explicit-any: error`, kebab-case filename + naming rules per CLAUDE.md).
-- [ ] T006 [P] Add `index.html` with viewport meta (`user-scalable=no`), `#game-root` + `#controls-root`, base CSS (full-viewport, `overflow:hidden`, `touch-action:none`, no selection).
-- [ ] T007 [P] Create source tree (`src/engine/{math,loop,input,render}`, `src/game/{vehicle,collision,view,hud}`), placeholder `src/main.ts`, `public/assets/.gitkeep`, `.gitignore`.
+- [X] T001 Initialize pnpm project: `package.json` with scripts (`dev`,`build`,`test`,`test:watch`,`lint`,`lint:fix`) and deps — `phaser`; devDeps `vite`, `typescript`, `vitest`, `@vitest/coverage-v8`, `jsdom`, `eslint`, `typescript-eslint`. `pnpm` only.
+- [X] T002 [P] Add `tsconfig.json` (strict, `noUncheckedIndexedAccess`, ES2022, bundler resolution, `src/**`).
+- [X] T003 [P] Add `vite.config.ts` (root, `public/` assets).
+- [X] T004 [P] Add `vitest.config.ts`: coverage `provider: v8`, `include: ['src/**/*.ts']`, `exclude: ['src/**/*.test.ts','src/**/*.d.ts','src/main.ts']`, `thresholds.lines: 80`; `environmentMatchGlobs` → `jsdom` for `*hud*`/`*overlay*`/`*input*` tests, `node` otherwise.
+- [X] T005 [P] Add `eslint.config.js` (typescript-eslint, `no-explicit-any: error`, kebab-case filename + naming rules per CLAUDE.md).
+- [X] T006 [P] Add `index.html` with viewport meta (`user-scalable=no`), `#game-root` + `#controls-root`, base CSS (full-viewport, `overflow:hidden`, `touch-action:none`, no selection).
+- [X] T007 [P] Create source tree (`src/engine/{math,loop,input,render}`, `src/game/{vehicle,collision,view,hud}`), placeholder `src/main.ts`, `public/assets/.gitkeep`, `.gitignore`.
 
 **Checkpoint**: `pnpm dev`, `pnpm test`, `pnpm exec tsc --noEmit`, `pnpm lint` run on an empty scaffold.
 
@@ -46,15 +46,15 @@ Phaser-free simulation; **explicit-coordinate geometry (wheels + hitch), derived
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T008 [P] Implement `src/engine/math/angles.ts` + `angles.test.ts`: `normaliseAngle` to `(−π,π]`, `clamp`, `lerp`, safe `tan`. Cover wrap-around, boundaries, negatives.
-- [ ] T009 [P] Implement `src/engine/math/vec2.ts` + test: `add`,`sub`,`scale`,`rotate`,`dot`,`perp`,`length`,`midpoint`,`normalise`. Cover zero-vector + rotation edge cases.
-- [ ] T010 [P] Implement `src/engine/math/obb.ts` + test: `Obb` type, `obbCorners`, `obbOverlap` (SAT), `obbMtv` (min translation vector, `null` if disjoint). Cover overlapping, touching-not-overlapping, containment, rotated boxes. (Shared: `World.boundary` + collision use this.)
-- [ ] T011 [P] Implement `src/engine/loop/clock.ts` + test: `Clock` interface + `performanceClock` (inject a fake `performance`; assert `now()` returns a number).
-- [ ] T012 Implement `src/engine/loop/fixed-step-loop.ts` + test: `createFixedStepLoop({dt,clock,maxCatchUp?})` → `{steps,alpha}`; cap catch-up. Test with `FakeClock` + scripted frame times (0/1/many/clamped). Depends on T011.
-- [ ] T013 [P] Implement `src/engine/input/input-source.ts` + test: `ControlInput` type, `InputSource` interface (`read`,`dispose`), `clampControlInput` → `[-1,1]`. Cover out-of-range clamping.
-- [ ] T014 [P] Add `src/engine/render/renderer.ts`: `Entity` type + `Renderer` interface (`sync`,`follow`,`dispose`). (Type-only.)
-- [ ] T015 [P] Add `src/engine/render/phaser-surface.ts`: `PhaserSurface` interface (`addSprite`,`setTransform`,`removeSprite`,`centerCamera`). (Type-only.)
-- [ ] T016 Add `src/engine/index.ts` barrel re-exporting public engine interfaces/types.
+- [X] T008 [P] Implement `src/engine/math/angles.ts` + `angles.test.ts`: `normaliseAngle` to `(−π,π]`, `clamp`, `lerp`, safe `tan`. Cover wrap-around, boundaries, negatives.
+- [X] T009 [P] Implement `src/engine/math/vec2.ts` + test: `add`,`sub`,`scale`,`rotate`,`dot`,`perp`,`length`,`midpoint`,`normalise`. Cover zero-vector + rotation edge cases.
+- [X] T010 [P] Implement `src/engine/math/obb.ts` + test: `Obb` type, `obbCorners`, `obbOverlap` (SAT), `obbMtv` (min translation vector, `null` if disjoint). Cover overlapping, touching-not-overlapping, containment, rotated boxes. (Shared: `World.boundary` + collision use this.)
+- [X] T011 [P] Implement `src/engine/loop/clock.ts` + test: `Clock` interface + `performanceClock` (inject a fake `performance`; assert `now()` returns a number).
+- [X] T012 Implement `src/engine/loop/fixed-step-loop.ts` + test: `createFixedStepLoop({dt,clock,maxCatchUp?})` → `{steps,alpha}`; cap catch-up. Test with `FakeClock` + scripted frame times (0/1/many/clamped). Depends on T011.
+- [X] T013 [P] Implement `src/engine/input/input-source.ts` + test: `ControlInput` type, `InputSource` interface (`read`,`dispose`), `clampControlInput` → `[-1,1]`. Cover out-of-range clamping.
+- [X] T014 [P] Add `src/engine/render/renderer.ts`: `Entity` type + `Renderer` interface (`sync`,`follow`,`dispose`). (Type-only.)
+- [X] T015 [P] Add `src/engine/render/phaser-surface.ts`: `PhaserSurface` interface (`addSprite`,`setTransform`,`removeSprite`,`centerCamera`). (Type-only.)
+- [X] T016 Add `src/engine/index.ts` barrel re-exporting public engine interfaces/types.
 
 **Checkpoint**: Shared math (incl. OBB/SAT) + loop + input/render contracts exist and are green.
 
@@ -71,19 +71,19 @@ stationary-steer-no-move, straight-line trailer settle, reverse jackknife+clamp,
 no-NaN, derived L/h/d correct for a variant); run the sandbox with a scripted `InputSource` to
 *watch* the rig drive/reverse and articulate — no keyboard/touch required.
 
-- [ ] T017 [P] [US1] Implement `src/game/vehicle/vehicle-types.ts`: branded units, `CarVariant`/`TrailerVariant` (explicit wheel + hitch coords, width/length, steerMax, jackknifeMax), `CarState`/`TrailerState` (incl. `role`, optional `trailer`), `Rig`, `World`, `VariantCatalog`, `CarSpawn` per data-model.md.
-- [ ] T018 [P] [US1] Implement `src/game/vehicle/variants.ts` + test: an initial car variant (`sedan`) + trailer variant (`caravan`) as data, plus `validateCarVariant`/`validateTrailerVariant`/`createVariantCatalog` (throw `RangeError` on bad geometry: non-positive sizes, degenerate axles, steer/jackknife out of range). Depends on T017.
-- [ ] T019 [US1] Implement `src/game/vehicle/vehicle-geometry.ts` + test: `deriveCarGeometry` (rear/front axle centres, forward axis, wheelbase `L`, track, hitch offset `h`), `deriveTrailerGeometry` (axle centre, length `d`), `wheelWorldPositions`, `hitchWorld`, `carFootprint`/`trailerFootprint` (→ `Obb`). Cover a couple of variants; assert L/h/d/track correct. Depends on T017, T010.
-- [ ] T020 [US1] Implement `src/game/vehicle/vehicle-model.ts` + **extensive** test: pure `stepRig({rig,input,dt,catalog})` per contracts/vehicle-model.md using **derived** L/h/d — speed accel/brake-to-zero/reverse; steer slew clamped; car bicycle `θ̇=v·tan(δ)/L`; trailer `φ̇=(v/d)·sin(θ−φ)−(h/d)·θ̇·cos(θ−φ)`; jackknife clamp; normalise + finiteness. Assert every guarantee (accelerate-not-teleport, brake to exactly 0, reverse symmetry, stationary-steer-no-move, straight-line `φ→θ`, reverse jackknife+clamp, determinism, no NaN, no-trailer path). Depends on T017, T018, T019.
-- [ ] T021 [US1] Implement `src/game/vehicle/world.ts` + test: `createWorld` (validates exactly one drivable car) and `stepWorld({world,input,dt})` advancing **only** the drivable rig via `stepRig` (no obstacles/collision yet — collision wired in US4). Cover single-rig advance + determinism + drivable-car validation. Depends on T020.
-- [ ] T022 [P] [US1] Implement `src/game/view/world-view.ts` + test: `worldToEntities(world, catalog)` → `Entity[]` for each car + its trailer + **each wheel as its own entity, front (steered) wheels rotated by the car heading + steer angle δ and rear/trailer wheels by their body heading** (positions/rotations from derived geometry), so the direction the wheels point is visually distinguishable per FR-002. Cover aligned + articulated + a non-zero steer angle (assert front-wheel rotation = heading + δ, rear = heading). Depends on T017, T014, T019.
-- [ ] T023 [US1] Implement `src/engine/render/phaser-renderer.ts` + test: `createPhaserRenderer({surface})` implementing `Renderer` — `sync` create/update/remove sprites to match entity ids, `follow` centres camera, `dispose` clears. Test against a `FakePhaserSurface` recording calls; no real Phaser. Depends on T014, T015.
-- [ ] T024 [US1] Implement `src/engine/render/create-phaser-surface.ts`: real `PhaserSurface` bootstrapping `Phaser.Game` + Scene with **Scale Manager (FIT), camera NOT rotated (pure straight-down)**, sprite create/transform/remove, `centerCamera`. (Thin real-Phaser glue.) Depends on T015.
-- [ ] T025 [P] [US1] Implement `src/game/hud/steering-indicator.ts` + test: pure `steerToRotation(δ, steerMax)` + `bindSteeringIndicator(el)` (CSS `transform: rotate`). Cover centre/full-lock both ways (jsdom bind). Satisfies FR-004a.
-- [ ] T026 [P] [US1] Implement `src/engine/input/scripted-input.ts` + test: `createScriptedInput(program)` deterministic `InputSource` playing forward→steer→reverse→jackknife (demo + US1 standalone visual test). Depends on T013.
-- [ ] T027 [US1] Implement `src/game/sandbox.ts` + test: `createSandbox({clock,input,renderer,world,steeringEl?,onReset?})` — each fixed step `input.read()` → `stepWorld` → `renderer.sync(worldToEntities)` + `renderer.follow(drivable rear axle)` + steering-indicator update; `reset()`, `dispose()`. Test with `FakeClock` + fake `InputSource`/`Renderer` (rig advances, reset restores). Depends on T012, T021, T022, T023, T025.
-- [ ] T028 [US1] Generate sprites via `ai-image-generator` — `car-sedan.png`, `trailer-caravan.png`, `steering-wheel.png` — **pure straight-down overhead, transparent PNG (GPT Image 1.5)** per research.md Decision 7; save to `public/assets/`, commit by name.
-- [ ] T029 [US1] Wire `src/main.ts`: boot real `PhaserSurface`, load sprites, build a `World` with one drivable rig, start `createSandbox` driven by `createScriptedInput` so `pnpm dev` shows it driving + articulating. Depends on T024, T026, T027, T028.
+- [X] T017 [P] [US1] Implement `src/game/vehicle/vehicle-types.ts`: branded units, `CarVariant`/`TrailerVariant` (explicit wheel + hitch coords, width/length, steerMax, jackknifeMax), `CarState`/`TrailerState` (incl. `role`, optional `trailer`), `Rig`, `World`, `VariantCatalog`, `CarSpawn` per data-model.md.
+- [X] T018 [P] [US1] Implement `src/game/vehicle/variants.ts` + test: an initial car variant (`sedan`) + trailer variant (`caravan`) as data, plus `validateCarVariant`/`validateTrailerVariant`/`createVariantCatalog` (throw `RangeError` on bad geometry: non-positive sizes, degenerate axles, steer/jackknife out of range). Depends on T017.
+- [X] T019 [US1] Implement `src/game/vehicle/vehicle-geometry.ts` + test: `deriveCarGeometry` (rear/front axle centres, forward axis, wheelbase `L`, track, hitch offset `h`), `deriveTrailerGeometry` (axle centre, length `d`), `wheelWorldPositions`, `hitchWorld`, `carFootprint`/`trailerFootprint` (→ `Obb`). Cover a couple of variants; assert L/h/d/track correct. Depends on T017, T010.
+- [X] T020 [US1] Implement `src/game/vehicle/vehicle-model.ts` + **extensive** test: pure `stepRig({rig,input,dt,catalog})` per contracts/vehicle-model.md using **derived** L/h/d — speed accel/brake-to-zero/reverse; steer slew clamped; car bicycle `θ̇=v·tan(δ)/L`; trailer `φ̇=(v/d)·sin(θ−φ)−(h/d)·θ̇·cos(θ−φ)`; jackknife clamp; normalise + finiteness. Assert every guarantee (accelerate-not-teleport, brake to exactly 0, reverse symmetry, stationary-steer-no-move, straight-line `φ→θ`, reverse jackknife+clamp, determinism, no NaN, no-trailer path). Depends on T017, T018, T019.
+- [X] T021 [US1] Implement `src/game/vehicle/world.ts` + test: `createWorld` (validates exactly one drivable car) and `stepWorld({world,input,dt})` advancing **only** the drivable rig via `stepRig` (no obstacles/collision yet — collision wired in US4). Cover single-rig advance + determinism + drivable-car validation. Depends on T020.
+- [X] T022 [P] [US1] Implement `src/game/view/world-view.ts` + test: `worldToEntities(world, catalog)` → `Entity[]` for each car + its trailer + **each wheel as its own entity, front (steered) wheels rotated by the car heading + steer angle δ and rear/trailer wheels by their body heading** (positions/rotations from derived geometry), so the direction the wheels point is visually distinguishable per FR-002. Cover aligned + articulated + a non-zero steer angle (assert front-wheel rotation = heading + δ, rear = heading). Depends on T017, T014, T019.
+- [X] T023 [US1] Implement `src/engine/render/phaser-renderer.ts` + test: `createPhaserRenderer({surface})` implementing `Renderer` — `sync` create/update/remove sprites to match entity ids, `follow` centres camera, `dispose` clears. Test against a `FakePhaserSurface` recording calls; no real Phaser. Depends on T014, T015.
+- [X] T024 [US1] Implement `src/engine/render/create-phaser-surface.ts`: real `PhaserSurface` bootstrapping `Phaser.Game` + Scene with **Scale Manager (FIT), camera NOT rotated (pure straight-down)**, sprite create/transform/remove, `centerCamera`. (Thin real-Phaser glue.) Depends on T015.
+- [X] T025 [P] [US1] Implement `src/game/hud/steering-indicator.ts` + test: pure `steerToRotation(δ, steerMax)` + `bindSteeringIndicator(el)` (CSS `transform: rotate`). Cover centre/full-lock both ways (jsdom bind). Satisfies FR-004a.
+- [X] T026 [P] [US1] Implement `src/engine/input/scripted-input.ts` + test: `createScriptedInput(program)` deterministic `InputSource` playing forward→steer→reverse→jackknife (demo + US1 standalone visual test). Depends on T013.
+- [X] T027 [US1] Implement `src/game/sandbox.ts` + test: `createSandbox({clock,input,renderer,world,steeringEl?,onReset?})` — each fixed step `input.read()` → `stepWorld` → `renderer.sync(worldToEntities)` + `renderer.follow(drivable rear axle)` + steering-indicator update; `reset()`, `dispose()`. Test with `FakeClock` + fake `InputSource`/`Renderer` (rig advances, reset restores). Depends on T012, T021, T022, T023, T025.
+- [X] T028 [US1] Generate sprites via `ai-image-generator` — `car-sedan.png`, `trailer-caravan.png`, `steering-wheel.png` — **pure straight-down overhead, transparent PNG (GPT Image 1.5)** per research.md Decision 7; save to `public/assets/`, commit by name.
+- [X] T029 [US1] Wire `src/main.ts`: boot real `PhaserSurface`, load sprites, build a `World` with one drivable rig, start `createSandbox` driven by `createScriptedInput` so `pnpm dev` shows it driving + articulating. Depends on T024, T026, T027, T028.
 
 **Checkpoint**: `pnpm dev` shows a straight-down drivable car+trailer auto-driving with correct
 articulation; geometry + `stepRig` fully unit-tested. **MVP demoable without human input.**
