@@ -50,6 +50,7 @@ async function main(): Promise<void> {
     controlsRoot,
     catalog,
     levels,
+    storage: window.localStorage,
   });
   app.showMenu();
 

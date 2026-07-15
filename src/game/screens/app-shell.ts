@@ -1,7 +1,9 @@
 import type { Clock } from "../../engine/loop/clock";
 import type { Renderer } from "../../engine/render/renderer";
 import type { Level } from "../level/level-types";
+import { saveCustomLevel, type LevelStorage } from "../level/level-store";
 import type { VariantCatalog } from "../vehicle/vehicle-types";
+import { createEditorScreen } from "./editor-screen";
 import { createMenuScreen } from "./menu-screen";
 import { createPlayScreen } from "./play-screen";
 import type { Screen } from "./screen";
@@ -27,11 +29,19 @@ export function createApp(args: {
   catalog: VariantCatalog;
   levels: Level[];
   isTouch?: boolean;
-  /** Editor factory (wired in P3); if omitted, the editor entry falls back to the menu. */
-  createEditor?: (onExitToMenu: () => void) => Screen;
+  /** Persistence for editor-authored levels (localStorage in the app). */
+  storage?: LevelStorage;
 }): App {
-  const { clock, renderer, controlsRoot, catalog, levels, isTouch, createEditor } = args;
+  const { clock, renderer, controlsRoot, catalog, isTouch, storage } = args;
+  const levels = [...args.levels];
   let active: Screen | null = null;
+
+  function upsertLevel(level: Level): void {
+    const i = levels.findIndex((l) => l.id === level.id);
+    if (i >= 0) levels[i] = level;
+    else levels.push(level);
+    if (storage) saveCustomLevel(level, storage);
+  }
 
   function clearWorld(): void {
     renderer.sync([]);
@@ -75,12 +85,17 @@ export function createApp(args: {
       );
     },
     openEditor(): void {
-      if (!createEditor) {
-        app.showMenu();
-        return;
-      }
       clearWorld();
-      swap(createEditor(() => app.showMenu()));
+      swap(
+        createEditorScreen({
+          renderer,
+          controlsRoot,
+          catalog,
+          onExitToMenu: () => app.showMenu(),
+          onTest: (level) => app.playLevel(level),
+          onSave: (level) => upsertLevel(level),
+        }),
+      );
     },
     dispose(): void {
       active?.dispose();

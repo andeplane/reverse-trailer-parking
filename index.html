@@ -236,6 +236,76 @@
         cursor: pointer;
       }
 
+      /* Level editor. */
+      .editor-screen {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+      .editor-capture {
+        position: absolute;
+        inset: 0;
+        pointer-events: auto;
+        touch-action: none;
+        cursor: crosshair;
+      }
+      .editor-palette {
+        position: absolute;
+        top: 50%;
+        left: 12px;
+        transform: translateY(-50%);
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 8px;
+        border-radius: 12px;
+        background: rgba(20, 23, 28, 0.82);
+        pointer-events: auto;
+      }
+      .editor-tool,
+      .editor-cycle {
+        padding: 8px 12px;
+        border: 2px solid rgba(255, 255, 255, 0.16);
+        border-radius: 8px;
+        background: rgba(45, 50, 58, 0.9);
+        color: #fff;
+        font: 600 13px system-ui, sans-serif;
+        text-align: left;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .editor-tool.active {
+        background: linear-gradient(180deg, #2f7fd6, #2565ad);
+        border-color: #7fb2e8;
+      }
+      .editor-topbar {
+        position: absolute;
+        top: 12px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        gap: 6px;
+        padding: 6px;
+        border-radius: 12px;
+        background: rgba(20, 23, 28, 0.82);
+        pointer-events: auto;
+      }
+      .editor-topbar button {
+        padding: 8px 14px;
+        border: 2px solid rgba(255, 255, 255, 0.16);
+        border-radius: 8px;
+        background: rgba(45, 50, 58, 0.9);
+        color: #fff;
+        font: 600 14px system-ui, sans-serif;
+        cursor: pointer;
+      }
+      .editor-topbar .editor-test {
+        background: linear-gradient(180deg, #35b36a, #268a50);
+      }
+      .editor-topbar .editor-save {
+        background: linear-gradient(180deg, #2f7fd6, #2565ad);
+      }
+
       /* Landscape: keep the drive buttons reachable without overlapping the slider. */
       @media (orientation: landscape) and (max-height: 480px) {
         .ctrl-forward,

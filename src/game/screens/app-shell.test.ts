@@ -5,7 +5,6 @@ import type { Entity, Renderer } from "../../engine/render/renderer";
 import type { Vec2 } from "../../engine/math/vec2";
 import { allCarVariants, allTrailerVariants, createVariantCatalog } from "../vehicle/variants";
 import type { Level } from "../level/level-types";
-import type { Screen } from "./screen";
 import { createApp } from "./app-shell";
 
 class FakeClock implements Clock {
@@ -46,7 +45,7 @@ function level(id: string): Level {
 let controlsRoot: HTMLElement | undefined;
 afterEach(() => controlsRoot?.remove());
 
-function makeApp(createEditor?: (onExit: () => void) => Screen) {
+function makeApp() {
   controlsRoot = document.createElement("div");
   document.body.appendChild(controlsRoot);
   const renderer = fakeRenderer();
@@ -57,7 +56,6 @@ function makeApp(createEditor?: (onExit: () => void) => Screen) {
     catalog,
     levels: [level("a"), level("b")],
     isTouch: false,
-    ...(createEditor ? { createEditor } : {}),
   });
   return { app, renderer, controlsRoot };
 }
@@ -94,24 +92,12 @@ describe("createApp", () => {
     expect(renderer.syncs.at(-1)).toEqual([]); // cleared
   });
 
-  it("falls back to the menu when no editor factory is provided", () => {
+  it("opens the level editor from the menu's editor button", () => {
     const { app, controlsRoot } = makeApp();
-    app.openEditor();
-    expect(controlsRoot.querySelector(".menu-screen")).not.toBeNull();
-  });
-
-  it("opens the editor screen when a factory is provided", () => {
-    let disposed = false;
-    const editor: Screen = { tick: () => {}, dispose: () => (disposed = true) };
-    const { app, controlsRoot } = makeApp(() => {
-      const el = document.createElement("div");
-      el.className = "editor-screen";
-      controlsRoot!.appendChild(el);
-      return { tick: editor.tick, dispose: () => { el.remove(); editor.dispose(); } };
-    });
-    app.openEditor();
+    app.showMenu();
+    (controlsRoot.querySelector(".menu-edit-button") as HTMLElement).click();
     expect(controlsRoot.querySelector(".editor-screen")).not.toBeNull();
     app.showMenu();
-    expect(disposed).toBe(true);
+    expect(controlsRoot.querySelector(".editor-screen")).toBeNull();
   });
 });
