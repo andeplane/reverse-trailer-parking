@@ -14,7 +14,11 @@ import {
   type Rig,
   type VariantCatalog,
   type World,
+  type WorldProp,
 } from "./vehicle-types";
+import type { ExitLine } from "../level/level-types";
+
+const DEFAULT_BOUNDS = { width: 200, height: 200 };
 
 function carStateFromSpawn(spawn: CarSpawn): CarState {
   return {
@@ -28,13 +32,27 @@ function carStateFromSpawn(spawn: CarSpawn): CarState {
   };
 }
 
-export function createWorld(args: { cars: CarSpawn[]; boundary: Obb[]; catalog: VariantCatalog }): World {
+export function createWorld(args: {
+  cars: CarSpawn[];
+  boundary: Obb[];
+  catalog: VariantCatalog;
+  props?: WorldProp[];
+  exit?: ExitLine | null;
+  bounds?: { width: number; height: number };
+}): World {
   const cars = args.cars.map(carStateFromSpawn);
   const drivableCount = cars.filter((c) => c.role === "drivable").length;
   if (drivableCount !== 1) {
     throw new RangeError(`World must have exactly one drivable car (found ${drivableCount})`);
   }
-  return { cars, boundary: args.boundary, catalog: args.catalog };
+  return {
+    cars,
+    boundary: args.boundary,
+    props: args.props ?? [],
+    exit: args.exit ?? null,
+    bounds: args.bounds ?? DEFAULT_BOUNDS,
+    catalog: args.catalog,
+  };
 }
 
 export function createInitialRig(args: {

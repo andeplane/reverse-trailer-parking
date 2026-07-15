@@ -9,7 +9,30 @@ import {
   trailerWheelWorldPositions,
   wheelWorldPositions,
 } from "../vehicle/vehicle-geometry";
-import { findCarVariant, findTrailerVariant, type VariantCatalog, type World } from "../vehicle/vehicle-types";
+import {
+  findCarVariant,
+  findTrailerVariant,
+  type VariantCatalog,
+  type World,
+  type WorldProp,
+} from "../vehicle/vehicle-types";
+import type { ExitLine, PropKind } from "../level/level-types";
+
+const PROP_STYLES: Record<PropKind, RectStyle> = {
+  grass: { fillColor: 0x3f8a3a, strokeColor: 0x347030, strokeWidth: 0 as Metres, cornerRadius: 0.3 as Metres },
+  curb: { fillColor: 0xb2b5ba, strokeColor: 0x82858a, strokeWidth: 0.05 as Metres, cornerRadius: 0.08 as Metres },
+  block: { fillColor: 0x474b53, strokeColor: 0x2a2d33, strokeWidth: 0.06 as Metres, cornerRadius: 0.12 as Metres },
+  tree: { fillColor: 0x2f6b2a, strokeColor: 0x1f4a1c, strokeWidth: 0.08 as Metres, cornerRadius: 2 as Metres },
+};
+
+const EXIT_STYLE: RectStyle = {
+  fillColor: 0xffd23f,
+  strokeColor: 0xd9a400,
+  strokeWidth: 0.08 as Metres,
+  cornerRadius: 0.1 as Metres,
+  fillAlpha: 0.5,
+};
+const EXIT_WIDTH = 0.6 as Metres;
 
 const DRAWBAR_STYLE: RectStyle = {
   fillColor: 0x2a2d31,
@@ -36,6 +59,27 @@ function wheelEntity(id: string, position: Vec2, rotation: Radians): Entity {
   return { id, position, rotation, size: WHEEL_SIZE, visual: { kind: "rect", style: WHEEL_STYLE } };
 }
 
+function propEntity(prop: WorldProp, index: number): Entity {
+  return {
+    id: `prop:${index}`,
+    position: prop.obb.center,
+    rotation: prop.obb.rotation,
+    size: { width: (prop.obb.halfW * 2) as Metres, length: (prop.obb.halfL * 2) as Metres },
+    visual: { kind: "rect", style: PROP_STYLES[prop.kind] },
+  };
+}
+
+function exitEntity(exit: ExitLine): Entity {
+  const seg = sub(exit.b, exit.a);
+  return {
+    id: "exit",
+    position: midpoint(exit.a, exit.b),
+    rotation: normaliseAngle(Math.atan2(seg.y, seg.x)),
+    size: { width: EXIT_WIDTH, length: Math.max(length(seg), 0.1) as Metres },
+    visual: { kind: "rect", style: EXIT_STYLE },
+  };
+}
+
 /**
  * World → Entity[] in ground→trailer→drawbar→car→wheels z-order. Vehicle bodies are roof-view
  * sprites; the drawbar rigidly links the car hitch to the trailer box front; wheels are drawn on
@@ -43,10 +87,17 @@ function wheelEntity(id: string, position: Vec2, rotation: Radians): Entity {
  * their body heading.
  */
 export function worldToEntities(world: World, catalog: VariantCatalog): Entity[] {
+  const ground: Entity[] = []; // exit marker + non-tree props, below vehicles
   const trailerBodies: Entity[] = [];
   const drawbars: Entity[] = [];
   const carBodies: Entity[] = [];
   const wheels: Entity[] = [];
+  const canopy: Entity[] = []; // trees, above vehicles
+
+  if (world.exit) ground.push(exitEntity(world.exit));
+  world.props.forEach((prop, index) => {
+    (prop.kind === "tree" ? canopy : ground).push(propEntity(prop, index));
+  });
 
   world.cars.forEach((car, index) => {
     const variant = findCarVariant(catalog, car.variantId);
@@ -103,5 +154,5 @@ export function worldToEntities(world: World, catalog: VariantCatalog): Entity[]
     );
   });
 
-  return [...trailerBodies, ...drawbars, ...carBodies, ...wheels];
+  return [...ground, ...trailerBodies, ...drawbars, ...carBodies, ...wheels, ...canopy];
 }

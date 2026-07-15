@@ -1,12 +1,11 @@
 import { performanceClock } from "./engine/loop/clock";
-import type { InputSource } from "./engine/input/input-source";
-import { createKeyboardInput } from "./engine/input/keyboard-input";
-import { createTouchInput } from "./engine/input/touch-input";
 import { createPhaserRenderer } from "./engine/render/phaser-renderer";
 import { createPhaserSurface } from "./engine/render/create-phaser-surface";
-import { createControlsOverlay } from "./game/hud/controls-overlay";
-import { createParkingLotWorld } from "./game/vehicle/world-setup";
-import { createSandbox, type Sandbox } from "./game/sandbox";
+import { createVariantCatalog, allCarVariants, allTrailerVariants } from "./game/vehicle/variants";
+import { createParkingLotLevel } from "./game/level/fallback-level";
+import { fetchBundledLevels, loadCustomLevels, mergeLevels } from "./game/level/level-store";
+import type { Level } from "./game/level/level-types";
+import { createApp } from "./game/screens/app-shell";
 
 const WORLD_TEXTURES: Record<string, string> = {
   "car-red": "/assets/car-red.png",
@@ -19,6 +18,18 @@ const WORLD_TEXTURES: Record<string, string> = {
   "lot-background": "/assets/lot-background.png",
 };
 
+async function loadLevels(): Promise<Level[]> {
+  let bundled: Level[];
+  try {
+    bundled = await fetchBundledLevels();
+  } catch (error) {
+    console.warn("Falling back to the built-in level:", error);
+    bundled = [createParkingLotLevel()];
+  }
+  const custom = loadCustomLevels(window.localStorage);
+  return mergeLevels(bundled, custom);
+}
+
 async function main(): Promise<void> {
   const gameRoot = document.getElementById("game-root");
   const controlsRoot = document.getElementById("controls-root");
@@ -30,46 +41,20 @@ async function main(): Promise<void> {
     background: { texture: "lot-background", widthMetres: 46, heightMetres: 46 },
   });
 
-  const world = createParkingLotWorld();
+  const catalog = createVariantCatalog({ cars: allCarVariants, trailers: allTrailerVariants });
+  const levels = await loadLevels();
 
-  const steeringEl = document.createElement("div");
-  steeringEl.id = "steering-indicator";
-  steeringEl.style.backgroundImage = "url(/assets/steering-wheel.png)";
-  controlsRoot.appendChild(steeringEl);
-
-  // Forward reference so the reset control can reach the sandbox created just below.
-  const sandboxRef: { current?: Sandbox } = {};
-  const reset = (): void => sandboxRef.current?.reset();
-
-  const forceTouch = new URLSearchParams(window.location.search).has("touch");
-  const isTouch =
-    forceTouch || window.matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0;
-
-  let input: InputSource;
-  if (isTouch) {
-    const overlay = createControlsOverlay({ parent: controlsRoot });
-    overlay.setOnReset(reset);
-    input = createTouchInput({ controls: overlay });
-  } else {
-    input = createKeyboardInput({ target: window, onReset: reset });
-  }
-
-  const sandbox = createSandbox({
+  const app = createApp({
     clock: performanceClock,
-    input,
     renderer: createPhaserRenderer({ surface }),
-    world,
-    steeringEl,
+    controlsRoot,
+    catalog,
+    levels,
   });
-  sandboxRef.current = sandbox;
-
-  // `d` toggles the collision-geometry debug overlay.
-  window.addEventListener("keydown", (e) => {
-    if (e.key === "d" || e.key === "D") sandbox.setDebug(!sandbox.isDebug());
-  });
+  app.showMenu();
 
   function frame(): void {
-    sandbox.tick();
+    app.tick();
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);

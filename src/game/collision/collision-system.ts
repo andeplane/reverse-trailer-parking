@@ -29,7 +29,7 @@ export function rigFootprints(rig: Rig, catalog: VariantCatalog): Obb[] {
   return footprints;
 }
 
-/** Immovable obstacles: every placed car (and its trailer) plus the boundary walls. */
+/** Immovable obstacles: every placed car (and its trailer), collidable props, plus boundary walls. */
 export function obstacleFootprints(world: World): Obb[] {
   const footprints: Obb[] = [];
   for (const car of placedCars(world)) {
@@ -39,6 +39,9 @@ export function obstacleFootprints(world: World): Obb[] {
       const trailerVariant = findTrailerVariant(world.catalog, car.trailer.variantId);
       footprints.push(trailerFootprint(car.trailer, hitchWorld(car, carVariant), trailerVariant));
     }
+  }
+  for (const prop of world.props) {
+    if (prop.collidable) footprints.push(prop.obb);
   }
   return [...footprints, ...world.boundary];
 }

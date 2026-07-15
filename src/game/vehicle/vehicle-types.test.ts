@@ -49,17 +49,17 @@ describe("world helpers", () => {
   const catalog = createVariantCatalog();
 
   it("finds the drivable car", () => {
-    const world: World = { cars: [makeCar("placed"), makeCar("drivable")], boundary: [], catalog };
+    const world: World = { cars: [makeCar("placed"), makeCar("drivable")], boundary: [], props: [], exit: null, bounds: { width: 100, height: 100 }, catalog };
     expect(drivableCar(world).role).toBe("drivable");
   });
 
   it("throws when no car is drivable", () => {
-    const world: World = { cars: [makeCar("placed")], boundary: [], catalog };
+    const world: World = { cars: [makeCar("placed")], boundary: [], props: [], exit: null, bounds: { width: 100, height: 100 }, catalog };
     expect(() => drivableCar(world)).toThrow(RangeError);
   });
 
   it("returns only placed cars", () => {
-    const world: World = { cars: [makeCar("placed"), makeCar("drivable")], boundary: [], catalog };
+    const world: World = { cars: [makeCar("placed"), makeCar("drivable")], boundary: [], props: [], exit: null, bounds: { width: 100, height: 100 }, catalog };
     expect(placedCars(world)).toHaveLength(1);
     expect(placedCars(world)[0]?.role).toBe("placed");
   });

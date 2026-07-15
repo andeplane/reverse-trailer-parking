@@ -45,6 +45,7 @@ describe("obstacleFootprints", () => {
         createCarWithTrailer("placed", -10),
       ],
       boundary,
+      props: [], exit: null, bounds: { width: 100, height: 100 }, 
       catalog,
     };
     // placed car (1) + placed car + trailer (2) + boundary (1) = 4
@@ -52,7 +53,7 @@ describe("obstacleFootprints", () => {
   });
 
   it("is empty when there are no placed cars or walls", () => {
-    const world = { cars: [createCar("drivable", 0)], boundary: [], catalog };
+    const world = { cars: [createCar("drivable", 0)], boundary: [], props: [], exit: null, bounds: { width: 100, height: 100 }, catalog };
     expect(obstacleFootprints(world)).toHaveLength(0);
   });
 });

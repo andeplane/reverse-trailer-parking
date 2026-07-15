@@ -2,6 +2,7 @@ import type { Radians } from "../../engine/math/angles";
 import type { MPerS, Metres } from "../../engine/math/units";
 import type { Vec2 } from "../../engine/math/vec2";
 import type { Obb } from "../../engine/math/obb";
+import type { ExitLine, PropKind } from "../level/level-types";
 
 /** Body-local coordinates: origin at the body reference, +x = forward (nose), +y = left. */
 export interface CarVariant {
@@ -63,9 +64,19 @@ export interface Rig {
   trailer: TrailerState | null;
 }
 
+/** A static scenery/obstacle instance placed in the world (curb, tree, grass, block). */
+export interface WorldProp {
+  kind: PropKind;
+  obb: Obb;
+  collidable: boolean;
+}
+
 export interface World {
   cars: CarState[];
   boundary: Obb[];
+  props: WorldProp[];
+  exit: ExitLine | null;
+  bounds: { width: number; height: number };
   catalog: VariantCatalog;
 }
 
