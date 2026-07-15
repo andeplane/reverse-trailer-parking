@@ -7,6 +7,7 @@ import { createControlsOverlay } from "../hud/controls-overlay";
 import { createWinOverlay, type WinOverlay } from "../hud/win-overlay";
 import type { Level } from "../level/level-types";
 import { levelToWorld } from "../level/level-to-world";
+import { applyDebugState, debugStateOf, encodeDebugState, parseDebugState } from "../level/debug-state";
 import { hasRigCrossedExit } from "../level/win";
 import { rigFootprints } from "../collision/collision-system";
 import { createSandbox, type Sandbox } from "../sandbox";
@@ -40,7 +41,10 @@ export function createPlayScreen(args: {
   const isTouch =
     args.isTouch ?? (window.matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0);
 
-  const world = levelToWorld(level, catalog);
+  let world = levelToWorld(level, catalog);
+  // Reproduce an exact scenario from a pasted debug URL (?dbg=<levelId>&x=..&y=..&h=..).
+  const urlState = parseDebugState(window.location.search);
+  if (urlState && urlState.levelId === level.id) world = applyDebugState(world, urlState);
   const steeringEl = makeSteeringIndicator(controlsRoot);
 
   const sandboxRef: { current?: Sandbox } = {};
@@ -67,10 +71,25 @@ export function createPlayScreen(args: {
   const sandbox = createSandbox({ clock, input, renderer, world, steeringEl });
   sandboxRef.current = sandbox;
 
+  // When debug is on, keep the URL in sync with the rig's exact state so it can be copied and
+  // pasted back to reproduce the scenario.
+  function writeDebugUrl(): void {
+    history.replaceState(null, "", encodeDebugState(debugStateOf(sandbox.getWorld(), level.id)));
+  }
+  function clearDebugUrl(): void {
+    history.replaceState(null, "", window.location.pathname);
+  }
+
   const onKeyDown = (e: KeyboardEvent): void => {
-    if (e.key === "d" || e.key === "D") sandbox.setDebug(!sandbox.isDebug());
+    if (e.key === "d" || e.key === "D") {
+      const on = !sandbox.isDebug();
+      sandbox.setDebug(on);
+      if (on) writeDebugUrl();
+      else clearDebugUrl();
+    }
   };
   window.addEventListener("keydown", onKeyDown);
+  let framesSinceUrlWrite = 0;
 
   let winOverlay: WinOverlay | null = null;
 
@@ -96,10 +115,15 @@ export function createPlayScreen(args: {
     tick(frameMs?: number): void {
       if (winOverlay) return; // frozen after winning until Retry/Next/Menu
       sandbox.tick(frameMs);
+      if (sandbox.isDebug() && ++framesSinceUrlWrite >= 20) {
+        framesSinceUrlWrite = 0;
+        writeDebugUrl();
+      }
       checkWin();
     },
     dispose(): void {
       window.removeEventListener("keydown", onKeyDown);
+      if (sandbox.isDebug()) clearDebugUrl();
       winOverlay?.dispose();
       for (const d of disposers) d();
       backButton.remove();
