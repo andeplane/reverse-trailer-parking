@@ -59,6 +59,8 @@ export function createApp(args: {
       );
     },
     playLevel(level: Level): void {
+      const index = levels.findIndex((l) => l.id === level.id);
+      const next = index >= 0 ? levels[index + 1] : undefined;
       swap(
         createPlayScreen({
           clock,
@@ -67,6 +69,7 @@ export function createApp(args: {
           level,
           catalog,
           onExitToMenu: () => app.showMenu(),
+          ...(next ? { onNextLevel: () => app.playLevel(next) } : {}),
           ...(isTouch !== undefined ? { isTouch } : {}),
         }),
       );

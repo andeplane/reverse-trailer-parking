@@ -16,6 +16,8 @@ export interface Sandbox {
   tick(frameMs?: number): void;
   /** Restores the world to its state at sandbox creation. */
   reset(): void;
+  /** The current (post-step) world — e.g. for win detection. */
+  getWorld(): World;
   /** Toggles the collision-geometry debug overlay. */
   setDebug(enabled: boolean): void;
   isDebug(): boolean;
@@ -65,6 +67,10 @@ export function createSandbox(args: {
       world = initialWorld;
       onReset?.();
       render();
+    },
+
+    getWorld(): World {
+      return world;
     },
 
     setDebug(enabled: boolean): void {
