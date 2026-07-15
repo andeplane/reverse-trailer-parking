@@ -31,7 +31,11 @@ export interface Entity {
 export interface Renderer {
   /** Create/update/remove drawn items to match the given entity list. */
   sync(entities: Entity[]): void;
-  /** Centres the camera on a world point. */
+  /** Centres the camera on a world point (at the current zoom). */
   follow(target: Vec2): void;
+  /** Centres the camera on a world point and sets an absolute zoom factor (1 = default). */
+  setCamera(center: Vec2, zoom: number): void;
+  /** Converts a client (page) pixel position to a world-space point in metres. */
+  screenToWorld(clientX: number, clientY: number): Vec2;
   dispose(): void;
 }

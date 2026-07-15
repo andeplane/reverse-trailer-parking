@@ -73,6 +73,20 @@ describe("worldToEntities", () => {
     expect(ids.indexOf("car:0")).toBeLessThan(ids.indexOf("car:0:wheel:fl"));
   });
 
+  it("renders boundary walls as rect entities so they are visible", () => {
+    const world: World = {
+      cars: [carAt()],
+      boundary: [{ center: { x: 20, y: 0 }, halfL: 0.5, halfW: 20, rotation: 0 as Radians }],
+      props: [],
+      exit: null,
+      bounds: { width: 40, height: 40 },
+      catalog,
+    };
+    const wall = worldToEntities(world, catalog).find((e) => e.id === "wall:0");
+    expect(wall?.visual.kind).toBe("rect");
+    expect(wall?.size).toEqual({ width: 40, length: 1 });
+  });
+
   it("handles multiple cars with stable, unique ids", () => {
     const world: World = { cars: [carAt(), carAt({ role: "placed" })], boundary: [], props: [], exit: null, bounds: { width: 100, height: 100 }, catalog };
     const ids = worldToEntities(world, catalog).map((e) => e.id);

@@ -22,4 +22,8 @@ export interface PhaserSurface {
   setTransform(id: string, x: number, y: number, rotation: number): void;
   remove(id: string): void;
   centerCamera(x: number, y: number): void;
+  /** Absolute camera: centre on world metres (x,y) at the given zoom factor (1 = default). */
+  setCamera(x: number, y: number, zoom: number): void;
+  /** Converts a client (page) pixel position to a world point in metres. */
+  clientToWorld(clientX: number, clientY: number): { x: number; y: number };
 }

@@ -17,7 +17,13 @@ class FakeClock implements Clock {
 }
 
 function fakeRenderer(): Renderer {
-  return { sync: (_e: Entity[]) => {}, follow: () => {}, dispose: () => {} };
+  return {
+    sync: (_e: Entity[]) => {},
+    follow: () => {},
+    setCamera: () => {},
+    screenToWorld: () => ({ x: 0, y: 0 }),
+    dispose: () => {},
+  };
 }
 
 const catalog = createVariantCatalog({ cars: allCarVariants, trailers: allTrailerVariants });

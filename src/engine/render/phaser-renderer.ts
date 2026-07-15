@@ -49,6 +49,14 @@ export function createPhaserRenderer(args: { surface: PhaserSurface }): Renderer
       surface.centerCamera(target.x, target.y);
     },
 
+    setCamera(center: Vec2, zoom: number): void {
+      surface.setCamera(center.x, center.y, zoom);
+    },
+
+    screenToWorld(clientX: number, clientY: number): Vec2 {
+      return surface.clientToWorld(clientX, clientY);
+    },
+
     dispose(): void {
       for (const id of liveIds) surface.remove(id);
       liveIds.clear();

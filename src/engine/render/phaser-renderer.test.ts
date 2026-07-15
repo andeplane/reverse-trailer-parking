@@ -20,6 +20,8 @@ function fakeSurface(): { surface: PhaserSurface; calls: Call[] } {
     setTransform: (id, x, y, rotation) => calls.push({ op: "transform", id, x, y, rotation }),
     remove: (id) => calls.push({ op: "remove", id }),
     centerCamera: (x, y) => calls.push({ op: "camera", x, y }),
+    setCamera: () => {},
+    clientToWorld: () => ({ x: 0, y: 0 }),
   };
   return { surface, calls };
 }

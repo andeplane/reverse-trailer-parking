@@ -48,6 +48,10 @@ function fakeRenderer(): Renderer & { syncCalls: Entity[][]; followCalls: Vec2[]
     follow(target) {
       followCalls.push(target);
     },
+    setCamera() {},
+    screenToWorld() {
+      return { x: 0, y: 0 };
+    },
     dispose() {
       this.disposed = true;
     },

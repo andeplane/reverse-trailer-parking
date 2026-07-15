@@ -91,6 +91,20 @@ export function createPhaserSurface(args: {
       centerCamera(x: number, y: number): void {
         scene?.cameras.main.centerOn(x * PIXELS_PER_METRE, -y * PIXELS_PER_METRE);
       },
+      setCamera(x: number, y: number, zoom: number): void {
+        if (!scene) return;
+        scene.cameras.main.setZoom(zoom);
+        scene.cameras.main.centerOn(x * PIXELS_PER_METRE, -y * PIXELS_PER_METRE);
+      },
+      clientToWorld(clientX: number, clientY: number): { x: number; y: number } {
+        if (!scene) return { x: 0, y: 0 };
+        const canvas = scene.game.canvas;
+        const rect = canvas.getBoundingClientRect();
+        const cx = ((clientX - rect.left) / rect.width) * canvas.width;
+        const cy = ((clientY - rect.top) / rect.height) * canvas.height;
+        const wp = scene.cameras.main.getWorldPoint(cx, cy);
+        return { x: wp.x / PIXELS_PER_METRE, y: -(wp.y / PIXELS_PER_METRE) };
+      },
     };
 
     const game = new Phaser.Game({

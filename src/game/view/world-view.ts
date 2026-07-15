@@ -34,6 +34,14 @@ const EXIT_STYLE: RectStyle = {
 };
 const EXIT_WIDTH = 0.6 as Metres;
 
+/** Concrete barrier look for the (otherwise invisible) boundary walls. */
+const BOUNDARY_STYLE: RectStyle = {
+  fillColor: 0x8b8f96,
+  strokeColor: 0x5a5e64,
+  strokeWidth: 0.1 as Metres,
+  cornerRadius: 0.1 as Metres,
+};
+
 const DRAWBAR_STYLE: RectStyle = {
   fillColor: 0x2a2d31,
   strokeColor: 0x15171a,
@@ -94,6 +102,15 @@ export function worldToEntities(world: World, catalog: VariantCatalog): Entity[]
   const wheels: Entity[] = [];
   const canopy: Entity[] = []; // trees, above vehicles
 
+  world.boundary.forEach((wall, index) => {
+    ground.push({
+      id: `wall:${index}`,
+      position: wall.center,
+      rotation: wall.rotation,
+      size: { width: (wall.halfW * 2) as Metres, length: (wall.halfL * 2) as Metres },
+      visual: { kind: "rect", style: BOUNDARY_STYLE },
+    });
+  });
   if (world.exit) ground.push(exitEntity(world.exit));
   world.props.forEach((prop, index) => {
     (prop.kind === "tree" ? canopy : ground).push(propEntity(prop, index));
