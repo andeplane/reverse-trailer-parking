@@ -63,6 +63,11 @@ async function main(): Promise<void> {
   });
   sandboxRef.current = sandbox;
 
+  // `d` toggles the collision-geometry debug overlay.
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "d" || e.key === "D") sandbox.setDebug(!sandbox.isDebug());
+  });
+
   function frame(): void {
     sandbox.tick();
     requestAnimationFrame(frame);

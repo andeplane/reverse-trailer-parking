@@ -7,6 +7,7 @@ import { bindSteeringIndicator, steerToRotation } from "./hud/steering-indicator
 import { drivableCar, findCarVariant, type World } from "./vehicle/vehicle-types";
 import { stepWorld } from "./vehicle/world";
 import { worldToEntities } from "./view/world-view";
+import { worldToDebugEntities } from "./view/debug-view";
 
 const DEFAULT_DT = (1 / 120) as Seconds;
 
@@ -15,6 +16,9 @@ export interface Sandbox {
   tick(frameMs?: number): void;
   /** Restores the world to its state at sandbox creation. */
   reset(): void;
+  /** Toggles the collision-geometry debug overlay. */
+  setDebug(enabled: boolean): void;
+  isDebug(): boolean;
   dispose(): void;
 }
 
@@ -34,9 +38,12 @@ export function createSandbox(args: {
 
   const loop = createFixedStepLoop({ dt, clock });
   const updateSteeringIndicator = args.steeringEl ? bindSteeringIndicator(args.steeringEl) : null;
+  let debugEnabled = false;
 
   function render(): void {
-    renderer.sync(worldToEntities(world, world.catalog));
+    const entities = worldToEntities(world, world.catalog);
+    const withDebug = debugEnabled ? [...entities, ...worldToDebugEntities(world, world.catalog)] : entities;
+    renderer.sync(withDebug);
     const drivable = drivableCar(world);
     renderer.follow(drivable.rearAxle);
     if (updateSteeringIndicator) {
@@ -58,6 +65,15 @@ export function createSandbox(args: {
       world = initialWorld;
       onReset?.();
       render();
+    },
+
+    setDebug(enabled: boolean): void {
+      debugEnabled = enabled;
+      render();
+    },
+
+    isDebug(): boolean {
+      return debugEnabled;
     },
 
     dispose(): void {

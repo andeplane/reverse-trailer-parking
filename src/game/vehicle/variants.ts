@@ -19,6 +19,9 @@ export function validateCarVariant(v: CarVariant): void {
   if (v.accel <= 0) throw new RangeError(`${v.id}: accel must be positive`);
   if (v.brake <= 0) throw new RangeError(`${v.id}: brake must be positive`);
   if (v.steerRate <= 0) throw new RangeError(`${v.id}: steerRate must be positive`);
+  if (v.collisionWidth !== undefined && !(v.collisionWidth > 0 && v.collisionWidth <= v.bodyWidth)) {
+    throw new RangeError(`${v.id}: collisionWidth must be in (0, bodyWidth]`);
+  }
 
   const track = length(sub(v.wheels.fl, v.wheels.fr));
   const rearTrack = length(sub(v.wheels.rl, v.wheels.rr));
@@ -34,6 +37,10 @@ export function validateCarVariant(v: CarVariant): void {
 export function validateTrailerVariant(v: TrailerVariant): void {
   if (v.bodyWidth <= 0) throw new RangeError(`${v.id}: bodyWidth must be positive`);
   if (v.bodyLength <= 0) throw new RangeError(`${v.id}: bodyLength must be positive`);
+
+  if (v.collisionWidth !== undefined && !(v.collisionWidth > 0 && v.collisionWidth <= v.bodyWidth)) {
+    throw new RangeError(`${v.id}: collisionWidth must be in (0, bodyWidth]`);
+  }
 
   const track = length(sub(v.axleWheels.l, v.axleWheels.r));
   if (track <= 0) throw new RangeError(`${v.id}: axle is degenerate (l == r)`);
@@ -62,6 +69,7 @@ export const sedanCarVariant: CarVariant = {
   steerRate: 2.5,
   jackknifeMax: 1.396 as Radians, // ~80°
   texture: "car-red",
+  collisionWidth: 1.62 as Metres,
 };
 
 /** Longer wheelbase + smaller steer lock → a noticeably wider turning circle than the sedan. */
@@ -84,6 +92,7 @@ export const suvCarVariant: CarVariant = {
   steerRate: 2.2,
   jackknifeMax: 1.396 as Radians,
   texture: "car-blue",
+  collisionWidth: 1.7 as Metres,
 };
 
 /** Short wheelbase + tight steer → a nimble hatchback with a small turning circle. */
@@ -106,6 +115,7 @@ export const hatchbackCarVariant: CarVariant = {
   steerRate: 2.8,
   jackknifeMax: 1.396 as Radians,
   texture: "car-green",
+  collisionWidth: 1.52 as Metres,
 };
 
 export const coupeCarVariant: CarVariant = {
@@ -127,6 +137,7 @@ export const coupeCarVariant: CarVariant = {
   steerRate: 2.6,
   jackknifeMax: 1.396 as Radians,
   texture: "car-orange",
+  collisionWidth: 1.65 as Metres,
 };
 
 export const wagonCarVariant: CarVariant = {
@@ -148,6 +159,7 @@ export const wagonCarVariant: CarVariant = {
   steerRate: 2.4,
   jackknifeMax: 1.396 as Radians,
   texture: "car-purple",
+  collisionWidth: 1.68 as Metres,
 };
 
 export const caravanTrailerVariant: TrailerVariant = {
@@ -158,8 +170,9 @@ export const caravanTrailerVariant: TrailerVariant = {
     r: { x: -0.9, y: -0.75 },
   },
   bodyWidth: 2.0 as Metres,
-  bodyLength: 3.1 as Metres,
+  bodyLength: 2.6 as Metres,
   texture: "trailer-white",
+  collisionWidth: 1.77 as Metres,
 };
 
 /** A short, wide flat-bed utility trailer — different footprint + shorter length than the caravan. */
@@ -173,6 +186,7 @@ export const utilityTrailerVariant: TrailerVariant = {
   bodyWidth: 1.9 as Metres,
   bodyLength: 2.1 as Metres,
   texture: "trailer-utility",
+  collisionWidth: 1.6 as Metres,
 };
 
 export const allCarVariants: CarVariant[] = [

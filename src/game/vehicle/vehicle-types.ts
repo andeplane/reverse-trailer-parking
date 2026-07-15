@@ -19,6 +19,8 @@ export interface CarVariant {
   jackknifeMax: Radians;
   /** Sprite texture key (roof-view art), loaded by the renderer. */
   texture: string;
+  /** Collision body width (metres), excluding sprite margin like door mirrors. Defaults to bodyWidth. */
+  collisionWidth?: Metres;
 }
 
 export interface TrailerVariant {
@@ -29,6 +31,8 @@ export interface TrailerVariant {
   bodyLength: Metres;
   /** Sprite texture key (roof-view art), loaded by the renderer. */
   texture: string;
+  /** Collision body width (metres), excluding sprite margin. Defaults to bodyWidth. */
+  collisionWidth?: Metres;
 }
 
 export interface VariantCatalog {

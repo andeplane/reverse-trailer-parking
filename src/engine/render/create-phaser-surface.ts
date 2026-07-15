@@ -54,8 +54,10 @@ export function createPhaserSurface(args: {
       const forwardPx = spec.length * PIXELS_PER_METRE;
       const sidePx = spec.width * PIXELS_PER_METRE;
       const radius = Math.min(spec.cornerRadius * PIXELS_PER_METRE, forwardPx / 2, sidePx / 2);
-      g.fillStyle(spec.fillColor, 1);
-      g.fillRoundedRect(-forwardPx / 2, -sidePx / 2, forwardPx, sidePx, radius);
+      if (spec.fillAlpha > 0) {
+        g.fillStyle(spec.fillColor, spec.fillAlpha);
+        g.fillRoundedRect(-forwardPx / 2, -sidePx / 2, forwardPx, sidePx, radius);
+      }
       if (spec.strokeWidth > 0) {
         g.lineStyle(spec.strokeWidth * PIXELS_PER_METRE, spec.strokeColor, 1);
         g.strokeRoundedRect(-forwardPx / 2, -sidePx / 2, forwardPx, sidePx, radius);
@@ -94,6 +96,15 @@ export function createPhaserSurface(args: {
     const game = new Phaser.Game({
       type: Phaser.AUTO,
       parent,
+      // Trilinear mipmapping + antialiasing so heavily down-scaled sprites keep smooth edges
+      // (without it, a ~6× down-scale breaks the sprite outline into jagged "dashes").
+      render: {
+        antialias: true,
+        antialiasGL: true,
+        mipmapFilter: "LINEAR_MIPMAP_LINEAR",
+        roundPixels: false,
+        powerPreference: "high-performance",
+      },
       scale: {
         mode: Phaser.Scale.RESIZE,
         autoCenter: Phaser.Scale.CENTER_BOTH,

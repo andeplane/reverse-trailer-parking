@@ -6,9 +6,10 @@ import { clampControlInput, type ControlInput, type InputSource } from "./input-
 const DEFAULT_STEER_RATE = 3;
 
 /**
- * Keyboard input: ↑/↓ → throttle ±1; ←/→ ramp the steer target toward ±1 while held and recentre
- * toward 0 on release (progressive steering from binary keys); `R` → onReset. The vehicle model
- * additionally slews the physical wheels, so steering feels smooth. Clamped to [-1, 1].
+ * Keyboard input: ↑/↓ → throttle ±1; ←/→ ramp the steer target toward ±1 while held and **hold**
+ * that angle on release (like a real steering wheel — no self-centring, so intermediate angles such
+ * as 22° are reachable and stay set). Steer back the other way to reduce it. `R` → onReset. The
+ * vehicle model additionally slews the physical wheels, so steering feels smooth. Clamped to [-1, 1].
  */
 export function createKeyboardInput(args: {
   target: EventTarget;
@@ -50,12 +51,9 @@ export function createKeyboardInput(args: {
       const throttle = (held.has("ArrowUp") ? 1 : 0) + (held.has("ArrowDown") ? -1 : 0);
       const steerDir = (held.has("ArrowLeft") ? 1 : 0) + (held.has("ArrowRight") ? -1 : 0);
 
+      // Ramp toward full lock while a steer key is held; hold the angle when released.
       if (steerDir !== 0) {
         steer = clamp(steer + steerDir * steerRate * dt, -1, 1);
-      } else if (steer > 0) {
-        steer = Math.max(0, steer - steerRate * dt);
-      } else if (steer < 0) {
-        steer = Math.min(0, steer + steerRate * dt);
       }
 
       return clampControlInput({ throttle, steer });

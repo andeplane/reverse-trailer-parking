@@ -10,6 +10,7 @@ export interface RectSpec extends Footprint {
   strokeColor: number;
   strokeWidth: number;
   cornerRadius: number;
+  fillAlpha: number;
 }
 
 /** The only surface phaser-renderer.ts touches; the real impl wraps a Phaser Scene. */

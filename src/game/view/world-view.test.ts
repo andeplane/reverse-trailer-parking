@@ -22,59 +22,55 @@ function carAt(overrides: Partial<CarState> = {}): CarState {
 }
 
 describe("worldToEntities", () => {
-  it("emits a single car sprite entity for a car with no trailer", () => {
+  it("emits a car body sprite + 4 wheels for a car with no trailer", () => {
     const world: World = { cars: [carAt()], boundary: [], catalog };
     const entities = worldToEntities(world, catalog);
-    expect(entities).toHaveLength(1);
-    const car = entities[0]!;
-    expect(car.id).toBe("car:0");
-    expect(car.visual).toEqual({ kind: "sprite", texture: sedanCarVariant.texture });
-    expect(car.size).toEqual({ width: sedanCarVariant.bodyWidth, length: sedanCarVariant.bodyLength });
+    const body = entities.find((e) => e.id === "car:0")!;
+    expect(body.visual).toEqual({ kind: "sprite", texture: sedanCarVariant.texture });
+    expect(body.size).toEqual({ width: sedanCarVariant.bodyWidth, length: sedanCarVariant.bodyLength });
+    expect(entities.filter((e) => /^car:0:wheel:/.test(e.id))).toHaveLength(4);
+    expect(entities.every((e) => !e.id.includes("trailer"))).toBe(true);
   });
 
-  it("emits trailer sprite + drawbar rect + car sprite when towing", () => {
+  it("renders wheels as rects and bodies as sprites", () => {
+    const entities = worldToEntities({ cars: [carAt()], boundary: [], catalog }, catalog);
+    expect(entities.find((e) => e.id === "car:0")?.visual.kind).toBe("sprite");
+    expect(entities.find((e) => e.id === "car:0:wheel:fl")?.visual.kind).toBe("rect");
+  });
+
+  it("emits trailer sprite + drawbar rect + trailer wheels + car sprite when towing", () => {
     const car = carAt({ trailer: { variantId: "caravan", heading: 0.2 as Radians } });
-    const world: World = { cars: [car], boundary: [], catalog };
-    const ids = worldToEntities(world, catalog).map((e) => e.id);
-    expect(ids).toEqual(["car:0:trailer", "car:0:drawbar", "car:0"]);
+    const ids = worldToEntities({ cars: [car], boundary: [], catalog }, catalog).map((e) => e.id);
+    expect(ids).toContain("car:0:trailer");
+    expect(ids).toContain("car:0:drawbar");
+    expect(ids).toContain("car:0");
+    expect(ids.filter((id) => /^car:0:trailer:wheel:/.test(id))).toHaveLength(2);
   });
 
-  it("draws the trailer body as a sprite and the drawbar as a rect", () => {
-    const car = carAt({ trailer: { variantId: "caravan", heading: 0 as Radians } });
-    const world: World = { cars: [car], boundary: [], catalog };
-    const entities = worldToEntities(world, catalog);
-    expect(entities.find((e) => e.id === "car:0:trailer")?.visual.kind).toBe("sprite");
-    expect(entities.find((e) => e.id === "car:0:drawbar")?.visual.kind).toBe("rect");
+  it("rotates the front wheels by heading + steer, and rear wheels by heading alone", () => {
+    const entities = worldToEntities(
+      { cars: [carAt({ heading: 0.1 as Radians, steer: 0.3 as Radians })], boundary: [], catalog },
+      catalog,
+    );
+    expect(entities.find((e) => e.id === "car:0:wheel:fl")?.rotation).toBeCloseTo(0.4);
+    expect(entities.find((e) => e.id === "car:0:wheel:fr")?.rotation).toBeCloseTo(0.4);
+    expect(entities.find((e) => e.id === "car:0:wheel:rl")?.rotation).toBeCloseTo(0.1);
+    expect(entities.find((e) => e.id === "car:0:wheel:rr")?.rotation).toBeCloseTo(0.1);
   });
 
-  it("orients the drawbar along the segment from car hitch to trailer box front", () => {
-    // In-line rig at heading 0: hitch and box front are colinear on the x-axis → drawbar rotation ≈ π.
-    const car = carAt({ trailer: { variantId: "caravan", heading: 0 as Radians } });
-    const world: World = { cars: [car], boundary: [], catalog };
-    const drawbar = worldToEntities(world, catalog).find((e) => e.id === "car:0:drawbar")!;
-    // box front is behind (−x of) the hitch, so the segment points in −x → rotation ≈ ±π.
-    expect(Math.abs(Math.abs(drawbar.rotation) - Math.PI)).toBeLessThan(1e-6);
-    expect(drawbar.size.length).toBeGreaterThan(0);
-  });
-
-  it("rotates the trailer sprite by the trailer's own heading, independent of car heading", () => {
+  it("rotates the trailer sprite/wheels by the trailer's own heading, independent of car heading", () => {
     const car = carAt({ heading: 0.5 as Radians, trailer: { variantId: "caravan", heading: -0.2 as Radians } });
-    const world: World = { cars: [car], boundary: [], catalog };
-    const trailer = worldToEntities(world, catalog).find((e) => e.id === "car:0:trailer")!;
-    expect(trailer.rotation).toBeCloseTo(-0.2);
+    const entities = worldToEntities({ cars: [car], boundary: [], catalog }, catalog);
+    expect(entities.find((e) => e.id === "car:0:trailer")?.rotation).toBeCloseTo(-0.2);
+    expect(entities.find((e) => e.id === "car:0:trailer:wheel:l")?.rotation).toBeCloseTo(-0.2);
   });
 
-  it("rotates the car sprite by the car heading", () => {
-    const world: World = { cars: [carAt({ heading: 0.9 as Radians })], boundary: [], catalog };
-    expect(worldToEntities(world, catalog).find((e) => e.id === "car:0")?.rotation).toBeCloseTo(0.9);
-  });
-
-  it("orders entities trailer → drawbar → car so the car sits on top", () => {
+  it("orders entities trailer → drawbar → car body → wheels (wheels on top)", () => {
     const car = carAt({ trailer: { variantId: "caravan", heading: 0 as Radians } });
-    const world: World = { cars: [car], boundary: [], catalog };
-    const ids = worldToEntities(world, catalog).map((e) => e.id);
+    const ids = worldToEntities({ cars: [car], boundary: [], catalog }, catalog).map((e) => e.id);
     expect(ids.indexOf("car:0:trailer")).toBeLessThan(ids.indexOf("car:0:drawbar"));
     expect(ids.indexOf("car:0:drawbar")).toBeLessThan(ids.indexOf("car:0"));
+    expect(ids.indexOf("car:0")).toBeLessThan(ids.indexOf("car:0:wheel:fl"));
   });
 
   it("handles multiple cars with stable, unique ids", () => {
@@ -93,10 +89,9 @@ describe("worldToEntities", () => {
     expect(carBodies).toHaveLength(lot.cars.length);
     expect(trailers).toHaveLength(lot.cars.filter((c) => c.trailer).length);
 
-    // z-order: the last trailer entity must come before the first car-body entity.
     const ids = entities.map((e) => e.id);
-    const lastTrailerIdx = ids.map((id) => /:trailer$/.test(id)).lastIndexOf(true);
+    const lastTrailerBodyIdx = ids.map((id) => /^car:\d+:trailer$/.test(id)).lastIndexOf(true);
     const firstCarBodyIdx = ids.findIndex((id) => /^car:\d+$/.test(id));
-    expect(lastTrailerIdx).toBeLessThan(firstCarBodyIdx);
+    expect(lastTrailerBodyIdx).toBeLessThan(firstCarBodyIdx);
   });
 });

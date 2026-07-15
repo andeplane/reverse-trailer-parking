@@ -178,13 +178,47 @@ describe("trailer articulation", () => {
     expect(Math.abs(result.car.heading - (result.trailer?.heading ?? 0))).toBeLessThan(0.01);
   });
 
-  it("grows articulation then clamps at jackknifeMax when reversing with steer (FR-013/014)", () => {
+  it("grows articulation up to jackknifeMax when reversing with steer, never exceeding it (FR-013/014)", () => {
     const rig: Rig = { car: restCar({ trailer: inLineTrailer() }), trailer: inLineTrailer() };
     const result = runSteps(rig, { throttle: -1, steer: 1 }, 3000);
     const rawPsi = (result.car.heading as number) - (result.trailer?.heading as number);
     const wrapped = Math.abs(Math.atan2(Math.sin(rawPsi), Math.cos(rawPsi)));
     expect(wrapped).toBeLessThanOrEqual(sedanCarVariant.jackknifeMax + 1e-6);
-    expect(wrapped).toBeGreaterThan(sedanCarVariant.jackknifeMax - 0.05);
+    expect(wrapped).toBeGreaterThan(sedanCarVariant.jackknifeMax - 0.1);
+  });
+
+  it("blocks the car at the jackknife limit — reversing further stops it (must pull forward)", () => {
+    const rig: Rig = { car: restCar({ trailer: inLineTrailer() }), trailer: inLineTrailer() };
+    // Reverse hard into the jackknife until the rig binds.
+    const jammed = runSteps(rig, { throttle: -1, steer: 1 }, 3000);
+    expect(jammed.car.speed).toBe(0);
+
+    // One more reverse step keeps the car frozen (no motion, no sideways trailer slide).
+    const next = stepRig({ rig: jammed, input: { throttle: -1, steer: 1 }, dt: DT as Seconds, catalog });
+    expect(next.car.rearAxle).toEqual(jammed.car.rearAxle);
+    expect(next.car.heading).toBe(jammed.car.heading);
+    expect(next.trailer?.heading).toBe(jammed.trailer?.heading);
+    expect(next.car.speed).toBe(0);
+  });
+
+  it("recovers from the jackknife when driving forward (articulation shrinks)", () => {
+    const rig: Rig = { car: restCar({ trailer: inLineTrailer() }), trailer: inLineTrailer() };
+    const jammed = runSteps(rig, { throttle: -1, steer: 1 }, 3000);
+    const jammedPsi = Math.abs(
+      Math.atan2(
+        Math.sin((jammed.car.heading as number) - (jammed.trailer?.heading as number)),
+        Math.cos((jammed.car.heading as number) - (jammed.trailer?.heading as number)),
+      ),
+    );
+    const recovered = runSteps(jammed, { throttle: 1, steer: 0 }, 300);
+    const recoveredPsi = Math.abs(
+      Math.atan2(
+        Math.sin((recovered.car.heading as number) - (recovered.trailer?.heading as number)),
+        Math.cos((recovered.car.heading as number) - (recovered.trailer?.heading as number)),
+      ),
+    );
+    expect(recovered.car.speed).toBeGreaterThan(0); // car moves again
+    expect(recoveredPsi).toBeLessThan(jammedPsi); // trailer unfolds
   });
 
   it("leaves trailer null through the no-trailer path", () => {

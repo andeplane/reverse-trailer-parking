@@ -60,7 +60,7 @@ export function hitchWorld(car: CarState, variant: CarVariant): Vec2 {
 export function carFootprint(car: CarState, variant: CarVariant): Obb {
   return {
     center: carLocalToWorld(car, variant, { x: 0, y: 0 }),
-    halfW: variant.bodyWidth / 2,
+    halfW: (variant.collisionWidth ?? variant.bodyWidth) / 2,
     halfL: variant.bodyLength / 2,
     rotation: car.heading,
   };
@@ -74,7 +74,7 @@ function trailerBodyCentreWorld(trailer: TrailerState, hitchWorldPoint: Vec2, va
 export function trailerFootprint(trailer: TrailerState, hitchWorldPoint: Vec2, variant: TrailerVariant): Obb {
   return {
     center: trailerBodyCentreWorld(trailer, hitchWorldPoint, variant),
-    halfW: variant.bodyWidth / 2,
+    halfW: (variant.collisionWidth ?? variant.bodyWidth) / 2,
     halfL: variant.bodyLength / 2,
     rotation: trailer.heading,
   };

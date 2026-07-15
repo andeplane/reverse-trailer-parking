@@ -88,7 +88,7 @@ describe("hitchWorld / carFootprint", () => {
   it("centres the footprint on the body and matches heading", () => {
     const car = carAt(5, -3, Math.PI / 4);
     const footprint = carFootprint(car, sedanCarVariant);
-    expect(footprint.halfW).toBeCloseTo(0.9);
+    expect(footprint.halfW).toBeCloseTo(0.81); // collisionWidth 1.62 / 2 (excludes mirrors)
     expect(footprint.halfL).toBeCloseTo(2.25);
     expect(footprint.rotation).toBeCloseTo(Math.PI / 4);
   });

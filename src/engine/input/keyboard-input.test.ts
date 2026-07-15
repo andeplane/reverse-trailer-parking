@@ -74,34 +74,31 @@ describe("createKeyboardInput", () => {
     expect(input.read().steer).toBeCloseTo(-0.5);
   });
 
-  it("recentres the steer toward 0 after the key is released", () => {
+  it("holds the steer angle after the key is released (no self-centring)", () => {
+    const target = new EventTarget();
+    const clock = new FakeClock();
+    const input = createKeyboardInput({ target, clock, steerRate: 2 });
+    input.read();
+    press(target, "ArrowLeft");
+    clock.advance(250); // 0.25s * 2 = 0.5
+    expect(input.read().steer).toBeCloseTo(0.5);
+    release(target, "ArrowLeft");
+    clock.advance(1000);
+    expect(input.read().steer).toBeCloseTo(0.5); // unchanged — the wheel stays where it was left
+  });
+
+  it("reduces the held angle by steering the opposite way", () => {
     const target = new EventTarget();
     const clock = new FakeClock();
     const input = createKeyboardInput({ target, clock, steerRate: 2 });
     input.read();
     press(target, "ArrowLeft");
     clock.advance(500);
-    input.read(); // steer at 1
+    input.read(); // steer at +1
     release(target, "ArrowLeft");
-    clock.advance(250);
-    expect(input.read().steer).toBeCloseTo(0.5);
-    clock.advance(500);
-    expect(input.read().steer).toBe(0);
-  });
-
-  it("recentres a negative steer toward 0 after ArrowRight is released", () => {
-    const target = new EventTarget();
-    const clock = new FakeClock();
-    const input = createKeyboardInput({ target, clock, steerRate: 2 });
-    input.read();
     press(target, "ArrowRight");
-    clock.advance(500);
-    input.read(); // steer at -1
-    release(target, "ArrowRight");
-    clock.advance(250);
-    expect(input.read().steer).toBeCloseTo(-0.5);
-    clock.advance(500);
-    expect(input.read().steer).toBe(0);
+    clock.advance(250); // ramp back toward -1 by 0.5
+    expect(input.read().steer).toBeCloseTo(0.5);
   });
 
   it("supports combined throttle + steer", () => {

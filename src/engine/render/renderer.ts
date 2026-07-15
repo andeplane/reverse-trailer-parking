@@ -8,6 +8,8 @@ export interface RectStyle {
   strokeColor: number;
   strokeWidth: Metres;
   cornerRadius: Metres;
+  /** Fill opacity 0..1 (default 1). Use 0 for a hollow outline (e.g. debug OBBs). */
+  fillAlpha?: number;
 }
 
 /** How an entity is drawn: a textured sprite (roof-view art) or a plain rounded rectangle. */

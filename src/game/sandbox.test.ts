@@ -125,6 +125,24 @@ describe("createSandbox", () => {
     expect(resetCalled).toBe(true);
   });
 
+  it("adds collision-geometry debug entities when debug is enabled", () => {
+    const clock = new FakeClock();
+    const input = fakeInput({ throttle: 0, steer: 0 });
+    const renderer = fakeRenderer();
+    const world = buildWorld();
+    const sandbox = createSandbox({ clock, input, renderer, world, dt: (1 / 60) as Seconds });
+
+    sandbox.tick(1000 / 60);
+    const withoutDebug = renderer.syncCalls.at(-1)!.length;
+
+    expect(sandbox.isDebug()).toBe(false);
+    sandbox.setDebug(true);
+    expect(sandbox.isDebug()).toBe(true);
+    const withDebug = renderer.syncCalls.at(-1)!;
+    expect(withDebug.length).toBeGreaterThan(withoutDebug);
+    expect(withDebug.some((e) => e.id.startsWith("debug:"))).toBe(true);
+  });
+
   it("dispose() disposes both the input and the renderer", () => {
     const clock = new FakeClock();
     const input = fakeInput({ throttle: 0, steer: 0 }) as InputSource & { wasDisposed: boolean };

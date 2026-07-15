@@ -20,6 +20,7 @@ export function createPhaserRenderer(args: { surface: PhaserSurface }): Renderer
         strokeColor: entity.visual.style.strokeColor,
         strokeWidth: entity.visual.style.strokeWidth,
         cornerRadius: entity.visual.style.cornerRadius,
+        fillAlpha: entity.visual.style.fillAlpha ?? 1,
       });
     }
   }

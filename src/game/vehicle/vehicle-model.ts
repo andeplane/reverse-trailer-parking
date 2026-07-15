@@ -48,7 +48,7 @@ export function stepRig(args: { rig: Rig; input: ControlInput; dt: Seconds; cata
   };
   const newHeading = normaliseAngle(heading + headingRate * dt);
 
-  // 4. Trailer articulation (if towed) + 5. jackknife clamp.
+  // 4. Trailer articulation (if towed) + 5. jackknife stop.
   let trailer = rig.trailer;
   if (trailer) {
     const trailerVariant = findTrailerVariant(catalog, trailer.variantId);
@@ -57,12 +57,20 @@ export function stepRig(args: { rig: Rig; input: ControlInput; dt: Seconds; cata
     const trailerHeadingRate =
       (speed / trailerLength) * Math.sin(psi0) - (hitchOffset / trailerLength) * headingRate * Math.cos(psi0);
     const unclampedHeading = normaliseAngle(trailer.heading + trailerHeadingRate * dt);
-
     const psi = normaliseAngle(newHeading - unclampedHeading);
-    const clampedPsi = clamp(psi, -carVariant.jackknifeMax, carVariant.jackknifeMax);
-    const newTrailerHeading = normaliseAngle(newHeading - clampedPsi);
 
-    trailer = { ...trailer, heading: newTrailerHeading };
+    // The trailer runs on rolling (no-side-slip) wheels, so we must NOT force its angle by rotating
+    // it about the hitch (that would slide the axle sideways). Instead, when the car's motion would
+    // fold the articulation past the mechanical jackknife limit, the rig binds: block that motion
+    // (stop the car) — you have to pull forward to recover.
+    if (Math.abs(psi) > carVariant.jackknifeMax) {
+      return {
+        car: { ...rig.car, speed: 0 as MPerS, steer },
+        trailer: rig.trailer,
+      };
+    }
+
+    trailer = { ...trailer, heading: unclampedHeading };
   }
 
   return {
