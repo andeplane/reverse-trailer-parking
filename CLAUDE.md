@@ -10,6 +10,33 @@ When things change (architecture, game engine choice +++), ALWAYS update this fi
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## App structure (as built — Milestone 2: levels, editor, exit/win)
+
+Design/ADR: `specs/002-levels-editor/design.md`. The app is a **DOM screen state
+machine** in `src/game/screens/` (`AppShell`) over one shared Phaser surface —
+**not** Phaser Scenes (Phaser stays confined to `src/engine/render/`):
+
+- **Menu** (`menu-screen.ts`) lists levels + a Level-editor entry.
+- **Play** (`play-screen.ts`) drives a level via the sandbox, detects the **win**
+  (car AND trailer fully cross the exit's outward half-plane — `level/win.ts`),
+  and shows a win overlay.
+- **Editor** (`editor-screen.ts`) builds maps intuitively: place cars (variant
+  cycle), drag-rect grass/curb areas, trees, and drag the exit (snaps to an edge);
+  Select-tool drags to move / empty-drag to pan; wheel zooms; Save persists to
+  localStorage; Test plays the draft.
+
+**Levels are data** (`src/game/level/`): `Level` (authoring schema) →
+`levelToWorld()` derives the runtime `World`, **opening a gap in the boundary for
+the exit** so the rig can reverse out. Bundled levels live in `public/levels.json`
+(fetched at boot, fallback to a built-in lot); custom editor levels merge from
+localStorage. `World` now carries `props` (curbs/trees/grass; solid ones collide),
+`exit`, and `bounds`. Pure modules (`level-*`, `win`, `editor-model`, `debug-state`)
+are unit-tested; the camera/pointer glue leans on `Renderer.screenToWorld/setCamera`.
+
+**Debug mode** (`d` key): draws collision-OBB outlines AND writes the rig's exact
+state to the URL (`?dbg=<levelId>&x=..&y=..&h=..&v=..&s=..&t=..`) so a pasted URL
+reproduces the scenario (`level/debug-state.ts`).
+
 ## Rendering (as built — Milestone 1)
 
 The world is drawn as **realistic AI-generated top-down sprites**, matching a polished casual
@@ -17,9 +44,15 @@ parking game (glossy cars, textured asphalt lot with bay lines + grass borders).
 
 - **One sprite per vehicle body** (car + trailer), scaled to its **derived footprint**
   (`bodyWidth`×`bodyLength`). Sprites are authored **nose-up** and trimmed to their true bounds so
-  footprint scaling is proportional (no stretching). Wheels are **baked into the sprite art** — we do
-  NOT render per-wheel entities. Steering is shown via the **steering-wheel HUD gauge** (top-left) plus
-  the car's visible turning. The trailer is linked to the car hitch by a thin **vector drawbar rect**.
+  footprint scaling is proportional (no stretching), with **clean edges** (no baked outline) and
+  pre-downscaled (LANCZOS) so runtime scaling stays crisp. **Front wheels are separate entities that
+  visibly rotate by the steer angle** (rear/trailer wheels track body heading), plus the steering-wheel
+  HUD gauge. The trailer is linked to the car hitch by a thin **vector drawbar rect**. Boundary walls
+  are rendered as visible concrete barriers.
+- **Collision ≠ sprite width**: the OBB uses a per-variant `collisionWidth` (the body, excluding
+  door mirrors) so collision matches the visible car, not the sprite's outer extent.
+- **Steering holds** (no self-centring); at the jackknife limit the car **binds** (stops) rather than
+  sliding the trailer sideways.
 - `src/game/view/world-view.ts` maps `World → Entity[]` where each `Entity` is a `sprite` or a `rect`
   (`EntityVisual` union). `src/engine/render/create-phaser-surface.ts` owns the Phaser glue: `42→32`
   pixels/metre, a **y-flip** (world +y up ↔ screen +y down) and rotation mapping `π/2 − θ` for nose-up
