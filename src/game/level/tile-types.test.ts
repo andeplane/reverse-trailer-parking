@@ -54,7 +54,7 @@ describe("cellCenter / worldToCell round-trip", () => {
 
 describe("isSolidTile", () => {
   it("marks curb/hedge/tree solid and asphalt/grass/bay passable", () => {
-    expect(["curb", "hedge", "tree"].every(isSolidTile)).toBe(true);
-    expect(["asphalt", "grass", "bay"].some(isSolidTile)).toBe(false);
+    expect((["curb", "hedge", "tree"] as const).every(isSolidTile)).toBe(true);
+    expect((["asphalt", "grass", "bay"] as const).some(isSolidTile)).toBe(false);
   });
 });

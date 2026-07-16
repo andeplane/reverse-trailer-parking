@@ -16,8 +16,25 @@ import { cellCenter, withTile, worldToCell, type TileType } from "../level/tile-
 import { worldToEntities } from "../view/world-view";
 import { worldToDebugEntities } from "../view/debug-view";
 import { allCarVariants } from "../vehicle/variants";
-import type { VariantCatalog } from "../vehicle/vehicle-types";
+import { findCarVariant, type VariantCatalog } from "../vehicle/vehicle-types";
 import type { Screen } from "./screen";
+
+function previewTileTexture(type: TileType): string {
+  return `tile-${type === "tree" ? "grass" : type}`;
+}
+
+function outlineEntity(id: string, position: Vec2, rotation: Radians, width: Metres, length: Metres, color: number): Entity {
+  return {
+    id,
+    position,
+    rotation,
+    size: { width, length },
+    visual: {
+      kind: "rect",
+      style: { fillColor: color, fillAlpha: 0, strokeColor: color, strokeWidth: 0.16 as Metres, cornerRadius: 0 as Metres },
+    },
+  };
+}
 
 const PIXELS_PER_METRE = 32; // must match create-phaser-surface
 const HALF_PI = Math.PI / 2;
@@ -84,11 +101,12 @@ export function createEditorScreen(args: {
     if (undoStack.length > 100) undoStack.shift();
   }
 
-  // Drag state.
+  // Drag / hover state.
   let dragStart: Vec2 | null = null;
   let dragMode: "none" | "pan" | "paint" | "move" | "rect" = "none";
   let lastClient: { x: number; y: number } | null = null;
   let spaceHeld = false;
+  let hover: Vec2 | null = null; // latest cursor world position, for the placement preview
   const painted = new Set<string>();
 
   // --- DOM ---------------------------------------------------------------
@@ -127,15 +145,11 @@ export function createEditorScreen(args: {
     toolEls.push(b);
   }
 
-  const rotateBtn = paletteButton("⟳ rotate", "editor-cycle", () => {
-    if (selection) {
-      pushUndo();
-      rotateSelection(HALF_PI as Radians);
-    } else {
-      brushRot = (brushRot + 1) % 4;
-      rotateBtn.textContent = `⟳ rotate (${brushRot * 90}°)`;
-    }
-  });
+  function setBrushRot(rot: number): void {
+    brushRot = ((rot % 4) + 4) % 4;
+    rotateBtn.textContent = `⟳ rotate (${brushRot * 90}°)`;
+  }
+  const rotateBtn = paletteButton("⟳ rotate (0°)", "editor-cycle", () => setBrushRot(brushRot + 1));
 
   // Car picker: a button that toggles a flyout of all car variants.
   const carBtn = paletteButton(`▾ Car: ${CAR_VARIANT_IDS[0]}`, "editor-tool editor-car", () => {
@@ -244,6 +258,7 @@ export function createEditorScreen(args: {
 
   function onPointerMove(e: Event): void {
     const pe = e as PointerEvent;
+    hover = worldAt(pe.clientX, pe.clientY);
     if (dragMode === "pan" && lastClient) {
       const dx = (pe.clientX - lastClient.x) / (PIXELS_PER_METRE * camera.zoom);
       const dy = (pe.clientY - lastClient.y) / (PIXELS_PER_METRE * camera.zoom);
@@ -298,15 +313,7 @@ export function createEditorScreen(args: {
       carFlyout.classList.remove("open");
       return;
     }
-    if (e.key === "r" || e.key === "R") {
-      if (selection) {
-        pushUndo();
-        rotateSelection(HALF_PI as Radians);
-      } else {
-        brushRot = (brushRot + 1) % 4;
-        rotateBtn.textContent = `⟳ rotate (${brushRot * 90}°)`;
-      }
-    }
+    if (e.key === "r" || e.key === "R") rotateUnderCursor();
     if (selection && (e.key === "Delete" || e.key === "Backspace")) deleteSelection();
     if (selection && e.key === "[") {
       pushUndo();
@@ -376,6 +383,89 @@ export function createEditorScreen(args: {
     level = { ...level, placedCars: level.placedCars.filter((_, i) => i !== sel.index) };
     selection = null;
   }
+  function rotateCar(hit: EditorHit, delta: Radians): void {
+    if (hit.kind === "drivable") level = { ...level, drivable: { ...level.drivable, heading: level.drivable.heading + delta } };
+    else level = { ...level, placedCars: level.placedCars.map((c, i) => (i === hit.index ? { ...c, heading: c.heading + delta } : c)) };
+  }
+  function headingOf(hit: EditorHit): number {
+    return hit.kind === "drivable" ? level.drivable.heading : level.placedCars[hit.index]!.heading;
+  }
+
+  /**
+   * R rotates whatever is under the cursor: a car (also syncing the brush so the next placed car
+   * matches), or the tile in the hovered cell; otherwise it just cycles the brush rotation.
+   */
+  function rotateUnderCursor(): void {
+    const car = hover ? carAt(level, hover, catalog) : null;
+    if (car) {
+      pushUndo();
+      rotateCar(car, HALF_PI as Radians);
+      setBrushRot(Math.round(headingOf(car) / HALF_PI));
+      return;
+    }
+    if (tool.kind === "paint" && hover) {
+      const cell = worldToCell(level.grid, hover);
+      if (cell) {
+        const tile = level.grid.cells[cell.row * level.grid.cols + cell.col]!;
+        pushUndo();
+        level = { ...level, grid: withTile(level.grid, cell.col, cell.row, { type: tile.type, rot: (tile.rot + 1) % 4 }) };
+        setBrushRot(tile.rot + 1);
+        return;
+      }
+    }
+    setBrushRot(brushRot + 1);
+  }
+
+  /** A ghost of what the current tool will place at the cursor, outlined green (valid) / red. */
+  function previewEntities(): Entity[] {
+    if (!hover || dragMode !== "none") return [];
+    if (tool.kind === "paint") {
+      const cell = worldToCell(level.grid, hover);
+      if (!cell) return [];
+      const center = cellCenter(level.grid, cell.col, cell.row);
+      const size = level.grid.tileSize as Metres;
+      const out: Entity[] = [
+        {
+          id: "editor:preview:tile",
+          position: center,
+          rotation: (tool.tile === "tree" ? 0 : brushRot * HALF_PI) as Radians,
+          size: { width: size, length: size },
+          visual: { kind: "sprite", texture: previewTileTexture(tool.tile) },
+        },
+      ];
+      if (tool.tile === "tree") {
+        out.push({
+          id: "editor:preview:canopy",
+          position: center,
+          rotation: 0 as Radians,
+          size: { width: size, length: size },
+          visual: { kind: "sprite", texture: "tile-tree" },
+        });
+      }
+      out.push(outlineEntity("editor:preview:box", center, 0 as Radians, size, size, 0x39ff14));
+      return out;
+    }
+    if (tool.kind === "car" || tool.kind === "drivable") {
+      const variantId = tool.kind === "car" ? CAR_VARIANT_IDS[carVariantIndex]! : level.drivable.variantId;
+      const heading = tool.kind === "car" ? brushRot * HALF_PI : level.drivable.heading;
+      const candidate: LevelCar = { variantId, position: snapToCell(hover), heading };
+      const obb = levelCarObb(candidate, catalog);
+      const ignore = tool.kind === "drivable" ? ({ kind: "drivable" } as const) : undefined;
+      const ok = !carOverlaps(level, candidate, catalog, ignore);
+      const variant = findCarVariant(catalog, variantId);
+      return [
+        {
+          id: "editor:preview:car",
+          position: obb.center,
+          rotation: obb.rotation,
+          size: { width: variant.bodyWidth, length: variant.bodyLength },
+          visual: { kind: "sprite", texture: variant.texture },
+        },
+        outlineEntity("editor:preview:box", obb.center, obb.rotation, (obb.halfW * 2) as Metres, (obb.halfL * 2) as Metres, ok ? 0x39ff14 : 0xff3b30),
+      ];
+    }
+    return [];
+  }
 
   return {
     tick(): void {
@@ -385,6 +475,7 @@ export function createEditorScreen(args: {
       const extra: Entity[] = [];
       if (debug) extra.push(...worldToDebugEntities(world, catalog));
       if (selection) extra.push(selectionEntity(level, selection, catalog));
+      extra.push(...previewEntities());
       renderer.sync([...entities, ...extra]);
     },
     dispose(): void {

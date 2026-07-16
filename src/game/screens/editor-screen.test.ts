@@ -8,12 +8,14 @@ import { createEditorScreen } from "./editor-screen";
 
 const catalog = createVariantCatalog({ cars: allCarVariants, trailers: allTrailerVariants });
 
-function fakeRenderer(worldPoint: Vec2): Renderer & { syncs: number; camera: number } {
+function fakeRenderer(worldPoint: Vec2): Renderer & { syncs: number; camera: number; last: Entity[] } {
   const r = {
     syncs: 0,
     camera: 0,
-    sync: (_e: Entity[]) => {
+    last: [] as Entity[],
+    sync: (e: Entity[]) => {
       r.syncs += 1;
+      r.last = e;
     },
     follow: () => {},
     setCamera: () => {
@@ -126,6 +128,26 @@ describe("createEditorScreen", () => {
     screen.tick();
     expect(renderer.syncs).toBeGreaterThan(0);
     expect(renderer.camera).toBeGreaterThan(0);
+  });
+
+  it("shows a placement preview at the hovered location", () => {
+    const { screen, controlsRoot, renderer } = mount({ x: 6, y: 3 });
+    (controlsRoot.querySelector('[data-tile="bay"]') as HTMLElement).click();
+    capture(controlsRoot).dispatchEvent(pointer("pointermove"));
+    screen.tick();
+    expect(renderer.last.some((e) => e.id.startsWith("editor:preview"))).toBe(true);
+  });
+
+  it("rotates the car under the cursor with R and syncs the brush rotation", () => {
+    const { controlsRoot, getSaved } = mount({ x: 6.5, y: 2 });
+    const cap = capture(controlsRoot);
+    (controlsRoot.querySelector('.editor-car-chip[data-variant="suv"]') as HTMLElement).click();
+    cap.dispatchEvent(pointer("pointerdown")); // place a car at (6,3)
+    cap.dispatchEvent(pointer("pointerup"));
+    cap.dispatchEvent(pointer("pointermove")); // hover it (screenToWorld → (6,3))
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "r" }));
+    (controlsRoot.querySelector(".editor-save") as HTMLElement).click();
+    expect(getSaved()?.placedCars[0]?.heading).toBeCloseTo(Math.PI / 2);
   });
 
   it("removes its DOM on dispose", () => {
