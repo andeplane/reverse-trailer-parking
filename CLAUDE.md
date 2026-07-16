@@ -25,13 +25,18 @@ machine** in `src/game/screens/` (`AppShell`) over one shared Phaser surface —
   Select-tool drags to move / empty-drag to pan; wheel zooms; Save persists to
   localStorage; Test plays the draft.
 
-**Levels are data** (`src/game/level/`): `Level` (authoring schema) →
-`levelToWorld()` derives the runtime `World`, **opening a gap in the boundary for
-the exit** so the rig can reverse out. Bundled levels live in `public/levels.json`
-(fetched at boot, fallback to a built-in lot); custom editor levels merge from
-localStorage. `World` now carries `props` (curbs/trees/grass; solid ones collide),
-`exit`, and `bounds`. Pure modules (`level-*`, `win`, `editor-model`, `debug-state`)
-are unit-tested; the camera/pointer glue leans on `Renderer.screenToWorld/setCamera`.
+**Levels are tile maps + data** (`src/game/level/`): a `Level` has a **`TileGrid`**
+(`tile-types.ts`: asphalt/grass/bay/curb/hedge/tree cells, each with a 0–3 rotation)
+plus cars and an exit. `levelToWorld()` derives the runtime `World` — solid tiles
+(curb/hedge/tree) → collidable `solids`, and it **opens a gap in the boundary for the
+exit** so the rig can reverse out. Tiles render from real sprites (`public/assets/tile-*.png`);
+canopy tiles (trees) draw above vehicles. Built-in levels are code (`built-in-levels.ts`);
+custom editor levels persist to localStorage. `World` carries `grid`, `solids`, `exit`,
+`bounds`. The editor is **tile-based** (`editor-screen.ts` + pure `editor-model.ts`): paint
+tiles by click/drag, a car-variant picker flyout, cars snap to cells and can't overlap,
+⟳/R rotate, ⌘Z undo, Esc cancel, Debug shows OBBs + field bounds. Camera/pointer glue leans
+on `Renderer.screenToWorld/setCamera`. **Renderer note:** `sync()` recreates a drawn item when
+its texture/style/size changes for an existing id (so repainted tiles update).
 
 **Debug mode** (`d` key): draws collision-OBB outlines AND writes the rig's exact
 state to the URL (`?dbg=<levelId>&x=..&y=..&h=..&v=..&s=..&t=..`) so a pasted URL
