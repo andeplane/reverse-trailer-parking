@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
+import { filledGrid } from "../../game/level/tile-types";
 import type { Level } from "../level/level-types";
 import { createMenuScreen } from "./menu-screen";
 
@@ -7,10 +8,9 @@ function level(id: string, name: string): Level {
   return {
     id,
     name,
-    size: { width: 20, height: 20 },
+    grid: filledGrid(4, 4, 5),
     drivable: { variantId: "sedan", position: { x: 0, y: 0 }, heading: 0 },
     placedCars: [],
-    props: [],
     exit: { a: { x: 10, y: -2 }, b: { x: 10, y: 2 }, outward: { x: 1, y: 0 } },
   };
 }

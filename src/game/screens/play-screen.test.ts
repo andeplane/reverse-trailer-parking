@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
+import { filledGrid } from "../level/tile-types";
 import type { Clock } from "../../engine/loop/clock";
 import type { Entity, Renderer } from "../../engine/render/renderer";
 import { allCarVariants, allTrailerVariants, createVariantCatalog } from "../vehicle/variants";
@@ -32,10 +33,9 @@ function level(exit: Level["exit"]): Level {
   return {
     id: "t",
     name: "Test Level",
-    size: { width: 60, height: 60 },
+    grid: filledGrid(12, 12, 5),
     drivable: { variantId: "sedan", position: { x: 0, y: 0 }, heading: 0, trailerVariantId: "caravan" },
     placedCars: [],
-    props: [],
     exit,
   };
 }

@@ -2,9 +2,17 @@ import type { Vec2 } from "../math/vec2";
 import type { Entity, Renderer } from "./renderer";
 import type { PhaserSurface } from "./phaser-surface";
 
+/** A signature of an entity's visual + size; if it changes, the drawn item must be recreated. */
+function visualKey(entity: Entity): string {
+  const s = entity.size;
+  if (entity.visual.kind === "sprite") return `sprite:${entity.visual.texture}:${s.width}:${s.length}`;
+  const st = entity.visual.style;
+  return `rect:${st.fillColor}:${st.strokeColor}:${st.strokeWidth}:${st.cornerRadius}:${st.fillAlpha ?? 1}:${s.width}:${s.length}`;
+}
+
 export function createPhaserRenderer(args: { surface: PhaserSurface }): Renderer {
   const { surface } = args;
-  const liveIds = new Set<string>();
+  const live = new Map<string, string>(); // id → visualKey
 
   function create(entity: Entity): void {
     if (entity.visual.kind === "sprite") {
@@ -29,17 +37,21 @@ export function createPhaserRenderer(args: { surface: PhaserSurface }): Renderer
     sync(entities: Entity[]): void {
       const nextIds = new Set(entities.map((e) => e.id));
 
-      for (const id of liveIds) {
+      for (const id of live.keys()) {
         if (!nextIds.has(id)) {
           surface.remove(id);
-          liveIds.delete(id);
+          live.delete(id);
         }
       }
 
       for (const entity of entities) {
-        if (!liveIds.has(entity.id)) {
+        const key = visualKey(entity);
+        const current = live.get(entity.id);
+        if (current !== key) {
+          // New, or its texture/style/size changed — (re)create the drawn item.
+          if (current !== undefined) surface.remove(entity.id);
           create(entity);
-          liveIds.add(entity.id);
+          live.set(entity.id, key);
         }
         surface.setTransform(entity.id, entity.position.x, entity.position.y, entity.rotation);
       }
@@ -58,8 +70,8 @@ export function createPhaserRenderer(args: { surface: PhaserSurface }): Renderer
     },
 
     dispose(): void {
-      for (const id of liveIds) surface.remove(id);
-      liveIds.clear();
+      for (const id of live.keys()) surface.remove(id);
+      live.clear();
     },
   };
 }

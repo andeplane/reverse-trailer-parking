@@ -1,7 +1,8 @@
 import { findCarVariant, findTrailerVariant, type VariantCatalog } from "../vehicle/vehicle-types";
-import type { ExitLine, Level, LevelCar, LevelProp, PropKind } from "./level-types";
+import type { ExitLine, Level, LevelCar } from "./level-types";
+import { ALL_TILE_TYPES, gridHeight, gridWidth, type TileGrid } from "./tile-types";
 
-const PROP_KINDS: ReadonlySet<string> = new Set<PropKind>(["curb", "tree", "grass", "block"]);
+const TILE_TYPES: ReadonlySet<string> = new Set<string>(ALL_TILE_TYPES);
 
 function validateCar(car: LevelCar, catalog: VariantCatalog, label: string): void {
   findCarVariant(catalog, car.variantId); // throws if unknown
@@ -12,23 +13,25 @@ function validateCar(car: LevelCar, catalog: VariantCatalog, label: string): voi
   if (!Number.isFinite(car.heading)) throw new RangeError(`${label}: heading must be finite`);
 }
 
-function validateProp(prop: LevelProp, i: number): void {
-  if (!PROP_KINDS.has(prop.kind)) throw new RangeError(`prop[${i}]: unknown kind "${prop.kind}"`);
-  if (!(prop.size.width > 0) || !(prop.size.length > 0)) {
-    throw new RangeError(`prop[${i}]: size must be positive`);
+function validateGrid(grid: TileGrid): void {
+  if (!(grid.tileSize > 0)) throw new RangeError("grid: tileSize must be positive");
+  if (!(grid.cols > 0) || !(grid.rows > 0)) throw new RangeError("grid: cols/rows must be positive");
+  if (grid.cells.length !== grid.cols * grid.rows) {
+    throw new RangeError(`grid: expected ${grid.cols * grid.rows} cells, got ${grid.cells.length}`);
   }
-  if (!Number.isFinite(prop.position.x) || !Number.isFinite(prop.position.y)) {
-    throw new RangeError(`prop[${i}]: position must be finite`);
+  for (const [i, cell] of grid.cells.entries()) {
+    if (!TILE_TYPES.has(cell.type)) throw new RangeError(`grid.cells[${i}]: unknown tile "${cell.type}"`);
+    if (!Number.isInteger(cell.rot) || cell.rot < 0 || cell.rot > 3) {
+      throw new RangeError(`grid.cells[${i}]: rot must be an integer 0..3`);
+    }
   }
 }
 
 function validateExit(exit: ExitLine, size: { width: number; height: number }): void {
   const len = Math.hypot(exit.b.x - exit.a.x, exit.b.y - exit.a.y);
   if (!(len > 0)) throw new RangeError("exit: a and b must differ");
-  const nLen = Math.hypot(exit.outward.x, exit.outward.y);
-  if (!(nLen > 0)) throw new RangeError("exit: outward normal must be non-zero");
+  if (!(Math.hypot(exit.outward.x, exit.outward.y) > 0)) throw new RangeError("exit: outward normal must be non-zero");
 
-  // The exit must lie on one of the four playfield edges so the boundary can open there.
   const hw = size.width / 2;
   const hh = size.height / 2;
   const tol = 1.0;
@@ -44,11 +47,8 @@ function validateExit(exit: ExitLine, size: { width: number; height: number }): 
 export function validateLevel(level: Level, catalog: VariantCatalog): void {
   if (!level.id) throw new RangeError("level: id is required");
   if (!level.name) throw new RangeError("level: name is required");
-  if (!(level.size.width > 0) || !(level.size.height > 0)) {
-    throw new RangeError("level: size must be positive");
-  }
+  validateGrid(level.grid);
   validateCar(level.drivable, catalog, "drivable");
   level.placedCars.forEach((c, i) => validateCar(c, catalog, `placedCars[${i}]`));
-  level.props.forEach(validateProp);
-  validateExit(level.exit, level.size);
+  validateExit(level.exit, { width: gridWidth(level.grid), height: gridHeight(level.grid) });
 }

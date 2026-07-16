@@ -1,5 +1,6 @@
 import type { Vec2 } from "../../engine/math/vec2";
-import type { ExitLine, Level, LevelCar, LevelProp, PropKind } from "./level-types";
+import type { ExitLine, Level, LevelCar } from "./level-types";
+import type { Tile, TileGrid, TileType } from "./tile-types";
 
 class ParseError extends RangeError {}
 
@@ -30,14 +31,19 @@ function parseCar(v: unknown, where: string): LevelCar {
   return car;
 }
 
-function parseProp(v: unknown, where: string): LevelProp {
-  if (!isObject(v)) throw new ParseError(`${where}: expected an object`);
-  if (!isObject(v.size)) throw new ParseError(`${where}.size: expected {width,length}`);
+function parseTile(v: unknown, where: string): Tile {
+  if (!isObject(v)) throw new ParseError(`${where}: expected {type,rot}`);
+  return { type: str(v.type, `${where}.type`) as TileType, rot: num(v.rot, `${where}.rot`) };
+}
+
+function parseGrid(v: unknown): TileGrid {
+  if (!isObject(v)) throw new ParseError("grid: expected an object");
+  if (!Array.isArray(v.cells)) throw new ParseError("grid.cells: expected an array");
   return {
-    kind: str(v.kind, `${where}.kind`) as PropKind,
-    position: vec2(v.position, `${where}.position`),
-    rotation: num(v.rotation, `${where}.rotation`),
-    size: { width: num(v.size.width, `${where}.size.width`), length: num(v.size.length, `${where}.size.length`) },
+    tileSize: num(v.tileSize, "grid.tileSize"),
+    cols: num(v.cols, "grid.cols"),
+    rows: num(v.rows, "grid.rows"),
+    cells: v.cells.map((c, i) => parseTile(c, `grid.cells[${i}]`)),
   };
 }
 
@@ -46,19 +52,16 @@ function parseExit(v: unknown): ExitLine {
   return { a: vec2(v.a, "exit.a"), b: vec2(v.b, "exit.b"), outward: vec2(v.outward, "exit.outward") };
 }
 
-/** Parses untrusted JSON data into a structurally-valid `Level` (semantic checks live in validateLevel). */
+/** Parses untrusted JSON data into a structurally-valid `Level` (semantic checks in validateLevel). */
 export function parseLevel(data: unknown): Level {
   if (!isObject(data)) throw new ParseError("level: expected an object");
-  if (!isObject(data.size)) throw new ParseError("level.size: expected {width,height}");
   if (!Array.isArray(data.placedCars)) throw new ParseError("level.placedCars: expected an array");
-  if (!Array.isArray(data.props)) throw new ParseError("level.props: expected an array");
   const level: Level = {
     id: str(data.id, "level.id"),
     name: str(data.name, "level.name"),
-    size: { width: num(data.size.width, "level.size.width"), height: num(data.size.height, "level.size.height") },
+    grid: parseGrid(data.grid),
     drivable: parseCar(data.drivable, "level.drivable"),
     placedCars: data.placedCars.map((c, i) => parseCar(c, `level.placedCars[${i}]`)),
-    props: data.props.map((p, i) => parseProp(p, `level.props[${i}]`)),
     exit: parseExit(data.exit),
   };
   if (data.parSeconds !== undefined) level.parSeconds = num(data.parSeconds, "level.parSeconds");

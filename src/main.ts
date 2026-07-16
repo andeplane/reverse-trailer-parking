@@ -2,9 +2,9 @@ import { performanceClock } from "./engine/loop/clock";
 import { createPhaserRenderer } from "./engine/render/phaser-renderer";
 import { createPhaserSurface } from "./engine/render/create-phaser-surface";
 import { createVariantCatalog, allCarVariants, allTrailerVariants } from "./game/vehicle/variants";
-import { createParkingLotLevel } from "./game/level/fallback-level";
-import { fetchBundledLevels, loadCustomLevels, mergeLevels } from "./game/level/level-store";
-import type { Level } from "./game/level/level-types";
+import { builtInLevels } from "./game/level/built-in-levels";
+import { loadCustomLevels, mergeLevels } from "./game/level/level-store";
+import { ALL_TILE_TYPES } from "./game/level/tile-types";
 import { createApp } from "./game/screens/app-shell";
 
 const WORLD_TEXTURES: Record<string, string> = {
@@ -15,34 +15,19 @@ const WORLD_TEXTURES: Record<string, string> = {
   "car-purple": "/assets/car-purple.png",
   "trailer-white": "/assets/trailer-white.png",
   "trailer-utility": "/assets/trailer-utility.png",
-  "lot-background": "/assets/lot-background.png",
+  // Tile textures (tree renders grass on the ground + the tree canopy on top).
+  ...Object.fromEntries(ALL_TILE_TYPES.map((t) => [`tile-${t}`, `/assets/tile-${t}.png`])),
 };
-
-async function loadLevels(): Promise<Level[]> {
-  let bundled: Level[];
-  try {
-    bundled = await fetchBundledLevels();
-  } catch (error) {
-    console.warn("Falling back to the built-in level:", error);
-    bundled = [createParkingLotLevel()];
-  }
-  const custom = loadCustomLevels(window.localStorage);
-  return mergeLevels(bundled, custom);
-}
 
 async function main(): Promise<void> {
   const gameRoot = document.getElementById("game-root");
   const controlsRoot = document.getElementById("controls-root");
   if (!gameRoot || !controlsRoot) throw new Error("Missing #game-root/#controls-root in index.html");
 
-  const surface = await createPhaserSurface({
-    parent: gameRoot,
-    textures: WORLD_TEXTURES,
-    background: { texture: "lot-background", widthMetres: 46, heightMetres: 46 },
-  });
+  const surface = await createPhaserSurface({ parent: gameRoot, textures: WORLD_TEXTURES });
 
   const catalog = createVariantCatalog({ cars: allCarVariants, trailers: allTrailerVariants });
-  const levels = await loadLevels();
+  const levels = mergeLevels(builtInLevels(), loadCustomLevels(window.localStorage));
 
   const app = createApp({
     clock: performanceClock,

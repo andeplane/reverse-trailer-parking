@@ -14,11 +14,11 @@ import {
   type Rig,
   type VariantCatalog,
   type World,
-  type WorldProp,
 } from "./vehicle-types";
 import type { ExitLine } from "../level/level-types";
+import { filledGrid, gridHeight, gridWidth, type TileGrid } from "../level/tile-types";
 
-const DEFAULT_BOUNDS = { width: 200, height: 200 };
+const DEFAULT_GRID = filledGrid(40, 40, 5, "asphalt");
 
 function carStateFromSpawn(spawn: CarSpawn): CarState {
   return {
@@ -36,7 +36,8 @@ export function createWorld(args: {
   cars: CarSpawn[];
   boundary: Obb[];
   catalog: VariantCatalog;
-  props?: WorldProp[];
+  solids?: Obb[];
+  grid?: TileGrid;
   exit?: ExitLine | null;
   bounds?: { width: number; height: number };
 }): World {
@@ -45,12 +46,14 @@ export function createWorld(args: {
   if (drivableCount !== 1) {
     throw new RangeError(`World must have exactly one drivable car (found ${drivableCount})`);
   }
+  const grid = args.grid ?? DEFAULT_GRID;
   return {
     cars,
     boundary: args.boundary,
-    props: args.props ?? [],
+    solids: args.solids ?? [],
+    grid,
     exit: args.exit ?? null,
-    bounds: args.bounds ?? DEFAULT_BOUNDS,
+    bounds: args.bounds ?? { width: gridWidth(grid), height: gridHeight(grid) },
     catalog: args.catalog,
   };
 }

@@ -1,45 +1,49 @@
 import type { Radians } from "../../engine/math/angles";
-import type { Renderer, RectStyle } from "../../engine/render/renderer";
 import type { Metres } from "../../engine/math/units";
 import type { Vec2 } from "../../engine/math/vec2";
-import type { Entity } from "../../engine/render/renderer";
-import type { Level, LevelProp, PropKind } from "../level/level-types";
+import type { Entity, Renderer, RectStyle } from "../../engine/render/renderer";
+import type { Level, LevelCar } from "../level/level-types";
 import { levelToWorld } from "../level/level-to-world";
 import {
+  carAt,
+  carOverlaps,
   emptyLevel,
-  hitTest,
   levelCarObb,
-  propObb,
-  rectFromDrag,
   snapExitToEdge,
   type EditorHit,
 } from "../level/editor-model";
+import { cellCenter, withTile, worldToCell, type TileType } from "../level/tile-types";
 import { worldToEntities } from "../view/world-view";
+import { worldToDebugEntities } from "../view/debug-view";
 import { allCarVariants } from "../vehicle/variants";
 import type { VariantCatalog } from "../vehicle/vehicle-types";
 import type { Screen } from "./screen";
 
 const PIXELS_PER_METRE = 32; // must match create-phaser-surface
+const HALF_PI = Math.PI / 2;
 
-type Tool = "select" | "car" | "grass" | "tree" | "curb" | "exit" | "erase";
+type Tool = { kind: "paint"; tile: TileType } | { kind: "car" } | { kind: "drivable" } | { kind: "exit" } | { kind: "select" };
 
 const CAR_VARIANT_IDS = allCarVariants.map((v) => v.id);
+const TILE_BRUSHES: { tile: TileType; label: string }[] = [
+  { tile: "asphalt", label: "Asphalt" },
+  { tile: "grass", label: "Grass" },
+  { tile: "bay", label: "Parking bay" },
+  { tile: "curb", label: "Curb" },
+  { tile: "hedge", label: "Hedge" },
+  { tile: "tree", label: "Tree" },
+];
 
 const SELECT_STYLE: RectStyle = {
   fillColor: 0x39ff14,
   fillAlpha: 0,
   strokeColor: 0x39ff14,
-  strokeWidth: 0.12 as Metres,
+  strokeWidth: 0.14 as Metres,
   cornerRadius: 0 as Metres,
 };
 
-function selectionObb(level: Level, sel: EditorHit, catalog: VariantCatalog): Entity | null {
-  const obb =
-    sel.kind === "drivable"
-      ? levelCarObb(level.drivable, catalog)
-      : sel.kind === "placed"
-        ? levelCarObb(level.placedCars[sel.index]!, catalog)
-        : propObb(level.props[sel.index]!);
+function selectionEntity(level: Level, sel: EditorHit, catalog: VariantCatalog): Entity {
+  const obb = sel.kind === "drivable" ? levelCarObb(level.drivable, catalog) : levelCarObb(level.placedCars[sel.index]!, catalog);
   return {
     id: "editor:selection",
     position: obb.center,
@@ -50,10 +54,10 @@ function selectionObb(level: Level, sel: EditorHit, catalog: VariantCatalog): En
 }
 
 /**
- * The level editor: build a map by placing cars, grass/curb areas (drag a rectangle), trees, and
- * the exit, then Save / Test. Select-tool drags empty space to pan and the mouse wheel zooms.
- * Camera/pointer glue leans on the renderer (screenToWorld / setCamera); the pure model
- * (hit-test, snapping, rects) is unit-tested separately.
+ * Tile-based level editor. Paint the map with tile brushes (asphalt, grass, parking bays, curbs,
+ * hedges, trees — rotate directional tiles with ⟳ / R), drop cars from a variant picker (can't
+ * overlap another car), set the exit, then Test / Save. Space-drag or Select-drag empty pans;
+ * wheel zooms; ⌘Z / Ctrl+Z undo; Esc cancels; the Debug button shows collision boxes.
  */
 export function createEditorScreen(args: {
   renderer: Renderer;
@@ -67,111 +71,174 @@ export function createEditorScreen(args: {
   const { renderer, controlsRoot, catalog, onExitToMenu, onTest, onSave } = args;
 
   let level: Level = args.initial ?? emptyLevel(`custom-${idSuffix()}`);
-  let tool: Tool = "select";
+  let tool: Tool = { kind: "paint", tile: "grass" };
+  let brushRot = 0;
   let carVariantIndex = 0;
   let selection: EditorHit | null = null;
-  const camera = { center: { x: 0, y: 0 } as Vec2, zoom: fitZoom(level.size) };
+  let debug = false;
+  const camera = { center: { x: 0, y: 0 } as Vec2, zoom: fitZoom(level.grid.cols * level.grid.tileSize, level.grid.rows * level.grid.tileSize) };
+
+  const undoStack: Level[] = [];
+  function pushUndo(): void {
+    undoStack.push(level);
+    if (undoStack.length > 100) undoStack.shift();
+  }
 
   // Drag state.
   let dragStart: Vec2 | null = null;
-  let dragMode: "none" | "pan" | "move" | "rect" = "none";
+  let dragMode: "none" | "pan" | "paint" | "move" | "rect" = "none";
   let lastClient: { x: number; y: number } | null = null;
+  let spaceHeld = false;
+  const painted = new Set<string>();
 
   // --- DOM ---------------------------------------------------------------
   const root = document.createElement("div");
   root.className = "editor-screen";
-
   const capture = document.createElement("div");
   capture.className = "editor-capture";
-  root.appendChild(capture);
-
   const palette = document.createElement("div");
   palette.className = "editor-palette";
-  root.appendChild(palette);
-
   const topbar = document.createElement("div");
   topbar.className = "editor-topbar";
-  root.appendChild(topbar);
-
+  root.append(capture, palette, topbar);
   controlsRoot.appendChild(root);
 
-  const toolButtons = new Map<Tool, HTMLButtonElement>();
-  function toolButton(t: Tool, label: string): void {
+  const toolEls: HTMLElement[] = [];
+  function paletteButton(label: string, className: string, onClick: () => void): HTMLButtonElement {
     const b = document.createElement("button");
     b.type = "button";
-    b.className = "editor-tool";
-    b.dataset.tool = t;
+    b.className = className;
     b.textContent = label;
-    b.addEventListener("click", () => setTool(t));
+    b.addEventListener("click", onClick);
     palette.appendChild(b);
-    toolButtons.set(t, b);
+    return b;
   }
-  const carButton = (() => {
-    toolButton("car", `Car: ${CAR_VARIANT_IDS[0]}`);
-    return toolButtons.get("car")!;
-  })();
-  toolButton("select", "Select / Move");
-  toolButton("grass", "Grass area");
-  toolButton("tree", "Tree");
-  toolButton("curb", "Curb");
-  toolButton("exit", "Exit");
-  toolButton("erase", "Erase");
+  function markActive(el: HTMLElement): void {
+    for (const e of toolEls) e.classList.toggle("active", e === el);
+  }
 
-  const cycleVariant = document.createElement("button");
-  cycleVariant.type = "button";
-  cycleVariant.className = "editor-cycle";
-  cycleVariant.textContent = "↻ variant";
-  cycleVariant.addEventListener("click", () => {
-    carVariantIndex = (carVariantIndex + 1) % CAR_VARIANT_IDS.length;
-    carButton.textContent = `Car: ${CAR_VARIANT_IDS[carVariantIndex]}`;
-    setTool("car");
+  for (const brush of TILE_BRUSHES) {
+    const b = paletteButton(brush.label, "editor-tool", () => {
+      tool = { kind: "paint", tile: brush.tile };
+      selection = null;
+      markActive(b);
+    });
+    b.dataset.tile = brush.tile;
+    toolEls.push(b);
+  }
+
+  const rotateBtn = paletteButton("⟳ rotate", "editor-cycle", () => {
+    if (selection) {
+      pushUndo();
+      rotateSelection(HALF_PI as Radians);
+    } else {
+      brushRot = (brushRot + 1) % 4;
+      rotateBtn.textContent = `⟳ rotate (${brushRot * 90}°)`;
+    }
   });
-  palette.appendChild(cycleVariant);
 
-  function topButton(label: string, className: string, onClick: () => void): void {
+  // Car picker: a button that toggles a flyout of all car variants.
+  const carBtn = paletteButton(`▾ Car: ${CAR_VARIANT_IDS[0]}`, "editor-tool editor-car", () => {
+    tool = { kind: "car" };
+    selection = null;
+    markActive(carBtn);
+    carFlyout.classList.toggle("open");
+  });
+  carBtn.dataset.tool = "car";
+  toolEls.push(carBtn);
+  const carFlyout = document.createElement("div");
+  carFlyout.className = "editor-car-flyout";
+  CAR_VARIANT_IDS.forEach((id, i) => {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "editor-car-chip";
+    chip.dataset.variant = id;
+    chip.textContent = id;
+    chip.addEventListener("click", () => {
+      carVariantIndex = i;
+      carBtn.textContent = `▾ Car: ${id}`;
+      tool = { kind: "car" };
+      markActive(carBtn);
+      carFlyout.classList.remove("open");
+    });
+    carFlyout.appendChild(chip);
+  });
+  palette.appendChild(carFlyout);
+
+  const startBtn = paletteButton("Start (player)", "editor-tool", () => {
+    tool = { kind: "drivable" };
+    selection = null;
+    markActive(startBtn);
+  });
+  toolEls.push(startBtn);
+  const exitBtn = paletteButton("Exit gate", "editor-tool", () => {
+    tool = { kind: "exit" };
+    selection = null;
+    markActive(exitBtn);
+  });
+  toolEls.push(exitBtn);
+  const selectBtn = paletteButton("Select / Move", "editor-tool", () => {
+    tool = { kind: "select" };
+    markActive(selectBtn);
+  });
+  toolEls.push(selectBtn);
+  markActive(toolEls[1]!); // grass brush active by default
+
+  function topButton(label: string, className: string, onClick: () => void): HTMLButtonElement {
     const b = document.createElement("button");
     b.type = "button";
     b.className = className;
     b.textContent = label;
     b.addEventListener("click", onClick);
     topbar.appendChild(b);
+    return b;
   }
-  topButton("＋", "editor-zoom", () => {
-    camera.zoom *= 1.2;
+  const debugBtn = topButton("Debug", "editor-debug", () => {
+    debug = !debug;
+    debugBtn.classList.toggle("active", debug);
   });
-  topButton("－", "editor-zoom", () => {
-    camera.zoom /= 1.2;
-  });
+  topButton("＋", "editor-zoom", () => (camera.zoom *= 1.2));
+  topButton("－", "editor-zoom", () => (camera.zoom /= 1.2));
   topButton("Test ▸", "editor-test", () => onTest(level));
   topButton("Save", "editor-save", () => onSave(level));
   topButton("☰ Menu", "editor-menu", () => onExitToMenu());
 
-  function setTool(t: Tool): void {
-    tool = t;
-    selection = null;
-    for (const [key, btn] of toolButtons) btn.classList.toggle("active", key === t);
-  }
-  setTool("select");
-
   // --- Pointer handling --------------------------------------------------
-  function worldAt(e: PointerEvent): Vec2 {
-    return renderer.screenToWorld(e.clientX, e.clientY);
+  function worldAt(clientX: number, clientY: number): Vec2 {
+    return renderer.screenToWorld(clientX, clientY);
+  }
+
+  function paintCell(p: Vec2): void {
+    const cell = worldToCell(level.grid, p);
+    if (!cell) return;
+    const key = `${cell.col},${cell.row}`;
+    if (painted.has(key)) return;
+    painted.add(key);
+    if (tool.kind !== "paint") return;
+    level = { ...level, grid: withTile(level.grid, cell.col, cell.row, { type: tool.tile, rot: brushRot }) };
   }
 
   function onPointerDown(e: Event): void {
     const pe = e as PointerEvent;
     pe.preventDefault();
-    const p = worldAt(pe);
+    const p = worldAt(pe.clientX, pe.clientY);
     dragStart = p;
     lastClient = { x: pe.clientX, y: pe.clientY };
+    painted.clear();
 
-    if (tool === "select") {
-      selection = hitTest(level, p, catalog);
-      dragMode = selection ? "move" : "pan";
-    } else if (tool === "grass" || tool === "curb" || tool === "exit") {
+    if (spaceHeld) {
+      dragMode = "pan";
+    } else if (tool.kind === "paint") {
+      pushUndo();
+      dragMode = "paint";
+      paintCell(p);
+    } else if (tool.kind === "exit") {
       dragMode = "rect";
+    } else if (tool.kind === "select") {
+      selection = carAt(level, p, catalog);
+      dragMode = selection ? "move" : "pan";
     } else {
-      dragMode = "none"; // click-place tools act on pointerup
+      dragMode = "none"; // car / drivable act on pointerup
     }
   }
 
@@ -182,8 +249,10 @@ export function createEditorScreen(args: {
       const dy = (pe.clientY - lastClient.y) / (PIXELS_PER_METRE * camera.zoom);
       camera.center = { x: camera.center.x - dx, y: camera.center.y + dy };
       lastClient = { x: pe.clientX, y: pe.clientY };
+    } else if (dragMode === "paint") {
+      paintCell(worldAt(pe.clientX, pe.clientY));
     } else if (dragMode === "move" && selection && dragStart) {
-      const p = worldAt(pe);
+      const p = worldAt(pe.clientX, pe.clientY);
       moveSelection({ x: p.x - dragStart.x, y: p.y - dragStart.y });
       dragStart = p;
     }
@@ -191,14 +260,15 @@ export function createEditorScreen(args: {
 
   function onPointerUp(e: Event): void {
     const pe = e as PointerEvent;
-    const p = worldAt(pe);
+    const p = worldAt(pe.clientX, pe.clientY);
     const start = dragStart ?? p;
 
-    if (tool === "car") addPlacedCar(p, start);
-    else if (tool === "tree") addTree(p);
-    else if ((tool === "grass" || tool === "curb") && dragMode === "rect") addRectProp(tool, start, p);
-    else if (tool === "exit" && dragMode === "rect") level = { ...level, exit: snapExitToEdge(start, p, level.size) };
-    else if (tool === "erase") eraseAt(p);
+    if (tool.kind === "car") placeCar(p);
+    else if (tool.kind === "drivable") moveDrivable(p);
+    else if (tool.kind === "exit" && dragMode === "rect") {
+      pushUndo();
+      level = { ...level, exit: snapExitToEdge(start, p, level.grid) };
+    }
 
     dragMode = "none";
     dragStart = null;
@@ -212,10 +282,43 @@ export function createEditorScreen(args: {
   }
 
   function onKeyDown(e: KeyboardEvent): void {
-    if (!selection) return;
-    if (e.key === "[") rotateSelection((-Math.PI / 12) as Radians);
-    else if (e.key === "]") rotateSelection((Math.PI / 12) as Radians);
-    else if (e.key === "Delete" || e.key === "Backspace") deleteSelection();
+    if (e.key === " ") spaceHeld = true;
+    if ((e.metaKey || e.ctrlKey) && (e.key === "z" || e.key === "Z")) {
+      e.preventDefault();
+      const prev = undoStack.pop();
+      if (prev) {
+        level = prev;
+        selection = null;
+      }
+      return;
+    }
+    if (e.key === "Escape") {
+      selection = null;
+      dragMode = "none";
+      carFlyout.classList.remove("open");
+      return;
+    }
+    if (e.key === "r" || e.key === "R") {
+      if (selection) {
+        pushUndo();
+        rotateSelection(HALF_PI as Radians);
+      } else {
+        brushRot = (brushRot + 1) % 4;
+        rotateBtn.textContent = `⟳ rotate (${brushRot * 90}°)`;
+      }
+    }
+    if (selection && (e.key === "Delete" || e.key === "Backspace")) deleteSelection();
+    if (selection && e.key === "[") {
+      pushUndo();
+      rotateSelection(-HALF_PI as Radians);
+    }
+    if (selection && e.key === "]") {
+      pushUndo();
+      rotateSelection(HALF_PI as Radians);
+    }
+  }
+  function onKeyUp(e: KeyboardEvent): void {
+    if (e.key === " ") spaceHeld = false;
   }
 
   capture.addEventListener("pointerdown", onPointerDown);
@@ -223,66 +326,54 @@ export function createEditorScreen(args: {
   capture.addEventListener("pointerup", onPointerUp);
   capture.addEventListener("wheel", onWheel, { passive: false });
   window.addEventListener("keydown", onKeyDown);
+  window.addEventListener("keyup", onKeyUp);
 
   // --- Mutations ---------------------------------------------------------
-  function headingFromDrag(from: Vec2, to: Vec2): number {
-    const dx = to.x - from.x;
-    const dy = to.y - from.y;
-    return Math.hypot(dx, dy) > 1 ? Math.atan2(dy, dx) : 0;
+  function snapToCell(p: Vec2): Vec2 {
+    const cell = worldToCell(level.grid, p);
+    return cell ? cellCenter(level.grid, cell.col, cell.row) : p;
   }
-  function addPlacedCar(p: Vec2, start: Vec2): void {
-    const heading = headingFromDrag(start, p);
-    level = {
-      ...level,
-      placedCars: [...level.placedCars, { variantId: CAR_VARIANT_IDS[carVariantIndex]!, position: p, heading }],
+  function placeCar(p: Vec2): void {
+    const candidate: LevelCar = {
+      variantId: CAR_VARIANT_IDS[carVariantIndex]!,
+      position: snapToCell(p),
+      heading: brushRot * HALF_PI,
     };
+    if (carOverlaps(level, candidate, catalog)) return; // no car on top of another
+    pushUndo();
+    level = { ...level, placedCars: [...level.placedCars, candidate] };
   }
-  function addTree(p: Vec2): void {
-    level = { ...level, props: [...level.props, { kind: "tree", position: p, rotation: 0, size: { width: 2.4, length: 2.4 } }] };
-  }
-  function addRectProp(kind: PropKind, a: Vec2, b: Vec2): void {
-    const rect = rectFromDrag(a, b);
-    const prop: LevelProp = { kind, position: rect.position, rotation: 0, size: rect.size };
-    level = { ...level, props: [...level.props, prop] };
-  }
-  function eraseAt(p: Vec2): void {
-    const hit = hitTest(level, p, catalog);
-    if (!hit || hit.kind === "drivable") return;
-    if (hit.kind === "placed") level = { ...level, placedCars: level.placedCars.filter((_, i) => i !== hit.index) };
-    else level = { ...level, props: level.props.filter((_, i) => i !== hit.index) };
-    selection = null;
+  function moveDrivable(p: Vec2): void {
+    const candidate: LevelCar = { ...level.drivable, position: snapToCell(p) };
+    if (carOverlaps(level, candidate, catalog, { kind: "drivable" })) return;
+    pushUndo();
+    level = { ...level, drivable: candidate };
   }
   function moveSelection(delta: Vec2): void {
     const sel = selection;
     if (!sel) return;
     if (sel.kind === "drivable") {
-      level = { ...level, drivable: { ...level.drivable, position: add(level.drivable.position, delta) } };
-    } else if (sel.kind === "placed") {
-      level = {
-        ...level,
-        placedCars: level.placedCars.map((c, i) => (i === sel.index ? { ...c, position: add(c.position, delta) } : c)),
-      };
+      const candidate = { ...level.drivable, position: add(level.drivable.position, delta) };
+      if (!carOverlaps(level, candidate, catalog, sel)) level = { ...level, drivable: candidate };
     } else {
-      level = {
-        ...level,
-        props: level.props.map((pr, i) => (i === sel.index ? { ...pr, position: add(pr.position, delta) } : pr)),
-      };
+      const car = level.placedCars[sel.index]!;
+      const candidate = { ...car, position: add(car.position, delta) };
+      if (!carOverlaps(level, candidate, catalog, sel)) {
+        level = { ...level, placedCars: level.placedCars.map((c, i) => (i === sel.index ? candidate : c)) };
+      }
     }
   }
-  function rotateSelection(delta: number): void {
+  function rotateSelection(delta: Radians): void {
     const sel = selection;
     if (!sel) return;
-    if (sel.kind === "drivable")
-      level = { ...level, drivable: { ...level.drivable, heading: level.drivable.heading + delta } };
-    else if (sel.kind === "placed")
-      level = { ...level, placedCars: level.placedCars.map((c, i) => (i === sel.index ? { ...c, heading: c.heading + delta } : c)) };
-    else level = { ...level, props: level.props.map((pr, i) => (i === sel.index ? { ...pr, rotation: pr.rotation + delta } : pr)) };
+    if (sel.kind === "drivable") level = { ...level, drivable: { ...level.drivable, heading: level.drivable.heading + delta } };
+    else level = { ...level, placedCars: level.placedCars.map((c, i) => (i === sel.index ? { ...c, heading: c.heading + delta } : c)) };
   }
   function deleteSelection(): void {
     const sel = selection;
     if (!sel || sel.kind === "drivable") return;
-    if (sel.kind === "placed") level = { ...level, placedCars: level.placedCars.filter((_, i) => i !== sel.index) };
-    else level = { ...level, props: level.props.filter((_, i) => i !== sel.index) };
+    pushUndo();
+    level = { ...level, placedCars: level.placedCars.filter((_, i) => i !== sel.index) };
     selection = null;
   }
 
@@ -291,11 +382,14 @@ export function createEditorScreen(args: {
       renderer.setCamera(camera.center, camera.zoom);
       const world = levelToWorld(level, catalog);
       const entities = worldToEntities(world, catalog);
-      const withSelection = selection ? [...entities, selectionObb(level, selection, catalog)!] : entities;
-      renderer.sync(withSelection);
+      const extra: Entity[] = [];
+      if (debug) extra.push(...worldToDebugEntities(world, catalog));
+      if (selection) extra.push(selectionEntity(level, selection, catalog));
+      renderer.sync([...entities, ...extra]);
     },
     dispose(): void {
       window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
       root.remove();
       renderer.setCamera({ x: 0, y: 0 }, 1);
     },
@@ -306,17 +400,13 @@ function add(a: Vec2, b: Vec2): Vec2 {
   return { x: a.x + b.x, y: a.y + b.y };
 }
 
-function fitZoom(size: { width: number; height: number }): number {
+function fitZoom(widthMetres: number, heightMetres: number): number {
   const vw = typeof window !== "undefined" ? window.innerWidth : 1000;
   const vh = typeof window !== "undefined" ? window.innerHeight : 800;
-  const zx = vw / (size.width * PIXELS_PER_METRE);
-  const zy = vh / (size.height * PIXELS_PER_METRE);
-  return Math.min(zx, zy) * 0.9;
+  return Math.min(vw / (widthMetres * PIXELS_PER_METRE), vh / (heightMetres * PIXELS_PER_METRE)) * 0.92;
 }
 
 function idSuffix(): string {
-  // Deterministic-enough unique-ish suffix from the current time is unavailable (Date.now blocked in
-  // some contexts); use a counter persisted on the function object.
   const holder = idSuffix as unknown as { n?: number };
   holder.n = (holder.n ?? 0) + 1;
   return String(holder.n);

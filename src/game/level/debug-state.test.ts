@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { filledGrid } from "./tile-types";
 import { allCarVariants, allTrailerVariants, createVariantCatalog } from "../vehicle/variants";
 import { drivableCar } from "../vehicle/vehicle-types";
 import type { Level } from "./level-types";
@@ -16,10 +17,9 @@ const catalog = createVariantCatalog({ cars: allCarVariants, trailers: allTraile
 const level: Level = {
   id: "lot-1",
   name: "Lot",
-  size: { width: 40, height: 30 },
+  grid: filledGrid(8, 6, 5),
   drivable: { variantId: "sedan", position: { x: -5, y: 2 }, heading: 0, trailerVariantId: "caravan" },
   placedCars: [],
-  props: [],
   exit: { a: { x: 20, y: -3 }, b: { x: 20, y: 3 }, outward: { x: 1, y: 0 } },
 };
 

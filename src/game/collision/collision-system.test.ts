@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import type { Radians } from "../../engine/math/angles";
 import { obbMtv, type Obb } from "../../engine/math/obb";
 import { createVariantCatalog } from "../vehicle/variants";
+import { filledGrid } from "../level/tile-types";
 import { createInitialRig } from "../vehicle/world";
 import type { Rig } from "../vehicle/vehicle-types";
 import { lerpRig, obstacleFootprints, resolveRigCollision, rigFootprints } from "./collision-system";
 
 const catalog = createVariantCatalog();
+const TILE_GRID = filledGrid(4, 4, 5);
 
 function wall(cx: number, cy: number, halfL: number, halfW: number): Obb {
   return { center: { x: cx, y: cy }, halfL, halfW, rotation: 0 as Radians };
@@ -45,7 +47,7 @@ describe("obstacleFootprints", () => {
         createCarWithTrailer("placed", -10),
       ],
       boundary,
-      props: [], exit: null, bounds: { width: 100, height: 100 }, 
+      solids: [], grid: TILE_GRID, exit: null, bounds: { width: 100, height: 100 }, 
       catalog,
     };
     // placed car (1) + placed car + trailer (2) + boundary (1) = 4
@@ -53,7 +55,7 @@ describe("obstacleFootprints", () => {
   });
 
   it("is empty when there are no placed cars or walls", () => {
-    const world = { cars: [createCar("drivable", 0)], boundary: [], props: [], exit: null, bounds: { width: 100, height: 100 }, catalog };
+    const world = { cars: [createCar("drivable", 0)], boundary: [], solids: [], grid: TILE_GRID, exit: null, bounds: { width: 100, height: 100 }, catalog };
     expect(obstacleFootprints(world)).toHaveLength(0);
   });
 });

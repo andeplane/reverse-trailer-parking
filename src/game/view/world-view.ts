@@ -9,21 +9,14 @@ import {
   trailerWheelWorldPositions,
   wheelWorldPositions,
 } from "../vehicle/vehicle-geometry";
-import {
-  findCarVariant,
-  findTrailerVariant,
-  type VariantCatalog,
-  type World,
-  type WorldProp,
-} from "../vehicle/vehicle-types";
-import type { ExitLine, PropKind } from "../level/level-types";
+import { findCarVariant, findTrailerVariant, type VariantCatalog, type World } from "../vehicle/vehicle-types";
+import type { ExitLine } from "../level/level-types";
+import { CANOPY_TILES, cellCenter, type TileGrid, type TileType } from "../level/tile-types";
 
-const PROP_STYLES: Record<PropKind, RectStyle> = {
-  grass: { fillColor: 0x3f8a3a, strokeColor: 0x347030, strokeWidth: 0 as Metres, cornerRadius: 0.3 as Metres },
-  curb: { fillColor: 0xb2b5ba, strokeColor: 0x82858a, strokeWidth: 0.05 as Metres, cornerRadius: 0.08 as Metres },
-  block: { fillColor: 0x474b53, strokeColor: 0x2a2d33, strokeWidth: 0.06 as Metres, cornerRadius: 0.12 as Metres },
-  tree: { fillColor: 0x2f6b2a, strokeColor: 0x1f4a1c, strokeWidth: 0.08 as Metres, cornerRadius: 2 as Metres },
-};
+/** Texture key for a tile type (tree renders grass on the ground + the tree canopy on top). */
+function tileTexture(type: TileType): string {
+  return `tile-${type === "tree" ? "grass" : type}`;
+}
 
 const EXIT_STYLE: RectStyle = {
   fillColor: 0xffd23f,
@@ -67,14 +60,36 @@ function wheelEntity(id: string, position: Vec2, rotation: Radians): Entity {
   return { id, position, rotation, size: WHEEL_SIZE, visual: { kind: "rect", style: WHEEL_STYLE } };
 }
 
-function propEntity(prop: WorldProp, index: number): Entity {
-  return {
-    id: `prop:${index}`,
-    position: prop.obb.center,
-    rotation: prop.obb.rotation,
-    size: { width: (prop.obb.halfW * 2) as Metres, length: (prop.obb.halfL * 2) as Metres },
-    visual: { kind: "rect", style: PROP_STYLES[prop.kind] },
-  };
+/** Ground + canopy sprite entities for the whole tile grid. */
+function tileEntities(grid: TileGrid): { ground: Entity[]; canopy: Entity[] } {
+  const ground: Entity[] = [];
+  const canopy: Entity[] = [];
+  const size = grid.tileSize as Metres;
+  for (let row = 0; row < grid.rows; row++) {
+    for (let col = 0; col < grid.cols; col++) {
+      const tile = grid.cells[row * grid.cols + col];
+      if (!tile) continue;
+      const center = cellCenter(grid, col, row);
+      const rotation = ((tile.rot * Math.PI) / 2) as Radians;
+      ground.push({
+        id: `tile:${row}:${col}`,
+        position: center,
+        rotation: tile.type === "tree" ? (0 as Radians) : rotation,
+        size: { width: size, length: size },
+        visual: { kind: "sprite", texture: tileTexture(tile.type) },
+      });
+      if (CANOPY_TILES.has(tile.type)) {
+        canopy.push({
+          id: `tile:${row}:${col}:canopy`,
+          position: center,
+          rotation: 0 as Radians,
+          size: { width: size, length: size },
+          visual: { kind: "sprite", texture: "tile-tree" },
+        });
+      }
+    }
+  }
+  return { ground, canopy };
 }
 
 function exitEntity(exit: ExitLine): Entity {
@@ -95,12 +110,13 @@ function exitEntity(exit: ExitLine): Entity {
  * their body heading.
  */
 export function worldToEntities(world: World, catalog: VariantCatalog): Entity[] {
-  const ground: Entity[] = []; // exit marker + non-tree props, below vehicles
+  const tiles = tileEntities(world.grid);
+  const ground: Entity[] = [...tiles.ground]; // tiles + exit marker, below vehicles
   const trailerBodies: Entity[] = [];
   const drawbars: Entity[] = [];
   const carBodies: Entity[] = [];
   const wheels: Entity[] = [];
-  const canopy: Entity[] = []; // trees, above vehicles
+  const canopy: Entity[] = [...tiles.canopy]; // tree canopies, above vehicles
 
   world.boundary.forEach((wall, index) => {
     ground.push({
@@ -112,9 +128,6 @@ export function worldToEntities(world: World, catalog: VariantCatalog): Entity[]
     });
   });
   if (world.exit) ground.push(exitEntity(world.exit));
-  world.props.forEach((prop, index) => {
-    (prop.kind === "tree" ? canopy : ground).push(propEntity(prop, index));
-  });
 
   world.cars.forEach((car, index) => {
     const variant = findCarVariant(catalog, car.variantId);

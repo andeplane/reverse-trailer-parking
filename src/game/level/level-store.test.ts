@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { filledGrid } from "./tile-types";
 import type { Level } from "./level-types";
 import {
   deleteCustomLevel,
@@ -13,10 +14,9 @@ function makeLevel(id: string, name = id): Level {
   return {
     id,
     name,
-    size: { width: 20, height: 20 },
+    grid: filledGrid(4, 4, 5),
     drivable: { variantId: "sedan", position: { x: 0, y: 0 }, heading: 0 },
     placedCars: [],
-    props: [],
     exit: { a: { x: 10, y: -2 }, b: { x: 10, y: 2 }, outward: { x: 1, y: 0 } },
   };
 }

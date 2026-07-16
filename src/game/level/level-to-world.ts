@@ -1,8 +1,9 @@
 import type { Radians } from "../../engine/math/angles";
 import type { Obb } from "../../engine/math/obb";
-import type { CarSpawn, VariantCatalog, World, WorldProp } from "../vehicle/vehicle-types";
+import type { CarSpawn, VariantCatalog, World } from "../vehicle/vehicle-types";
 import { createWorld } from "../vehicle/world";
-import { isSolidProp, type ExitLine, type Level, type LevelCar } from "./level-types";
+import type { ExitLine, Level, LevelCar } from "./level-types";
+import { cellCenter, gridHeight, gridWidth, isSolidTile, type TileGrid } from "./tile-types";
 
 const WALL_THICKNESS = 0.5;
 /** Extra clearance added on each side of the exit opening in the boundary. */
@@ -33,13 +34,9 @@ function edgeWall(horizontal: boolean, at: number, c0: number, c1: number): Obb 
 
 /**
  * Encloses the playfield with boundary walls, punching an opening on whichever edge the exit lies
- * on so the rig can actually reverse out through it. (An unbroken wall would make the exit
- * unreachable — see design.md review resolution 1.)
+ * on so the rig can actually reverse out through it.
  */
-export function boundaryWithExitGap(
-  size: { width: number; height: number },
-  exit: ExitLine | null,
-): Obb[] {
+export function boundaryWithExitGap(size: { width: number; height: number }, exit: ExitLine | null): Obb[] {
   const hw = size.width / 2;
   const hh = size.height / 2;
   const edges = [
@@ -70,17 +67,19 @@ export function boundaryWithExitGap(
   return walls;
 }
 
-function levelPropToWorld(prop: Level["props"][number]): WorldProp {
-  return {
-    kind: prop.kind,
-    obb: {
-      center: prop.position,
-      halfW: prop.size.width / 2,
-      halfL: prop.size.length / 2,
-      rotation: prop.rotation as Radians,
-    },
-    collidable: isSolidProp(prop.kind),
-  };
+/** Collidable footprints of solid tiles (curb, hedge, tree). */
+export function solidTileFootprints(grid: TileGrid): Obb[] {
+  const obbs: Obb[] = [];
+  const half = grid.tileSize / 2;
+  for (let row = 0; row < grid.rows; row++) {
+    for (let col = 0; col < grid.cols; col++) {
+      const tile = grid.cells[row * grid.cols + col];
+      if (tile && isSolidTile(tile.type)) {
+        obbs.push({ center: cellCenter(grid, col, row), halfL: half, halfW: half, rotation: 0 as Radians });
+      }
+    }
+  }
+  return obbs;
 }
 
 /** Builds the runtime `World` from an authored `Level`. Pure; deterministic. */
@@ -89,12 +88,14 @@ export function levelToWorld(level: Level, catalog: VariantCatalog): World {
     carSpawn(level.drivable, "drivable"),
     ...level.placedCars.map((c) => carSpawn(c, "placed")),
   ];
+  const bounds = { width: gridWidth(level.grid), height: gridHeight(level.grid) };
   return createWorld({
     cars,
-    boundary: boundaryWithExitGap(level.size, level.exit),
-    props: level.props.map(levelPropToWorld),
+    boundary: boundaryWithExitGap(bounds, level.exit),
+    solids: solidTileFootprints(level.grid),
+    grid: level.grid,
     exit: level.exit,
-    bounds: level.size,
+    bounds,
     catalog,
   });
 }

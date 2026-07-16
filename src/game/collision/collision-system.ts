@@ -40,10 +40,7 @@ export function obstacleFootprints(world: World): Obb[] {
       footprints.push(trailerFootprint(car.trailer, hitchWorld(car, carVariant), trailerVariant));
     }
   }
-  for (const prop of world.props) {
-    if (prop.collidable) footprints.push(prop.obb);
-  }
-  return [...footprints, ...world.boundary];
+  return [...footprints, ...world.solids, ...world.boundary];
 }
 
 function angleLerp(a: number, b: number, t: number): Radians {

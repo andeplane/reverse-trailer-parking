@@ -1,3 +1,4 @@
+import type { Radians } from "../../engine/math/angles";
 import type { Metres } from "../../engine/math/units";
 import type { Obb } from "../../engine/math/obb";
 import type { Entity, RectStyle } from "../../engine/render/renderer";
@@ -16,6 +17,7 @@ function outlineStyle(strokeColor: number): RectStyle {
 
 const RIG_COLOR = 0x39ff14; // green — the drivable rig footprints
 const OBSTACLE_COLOR = 0xff3b30; // red — placed cars, trailers, boundary
+const BOUNDS_COLOR = 0x33c4ff; // cyan — the playfield bounds
 
 function obbEntity(id: string, obb: Obb, strokeColor: number): Entity {
   return {
@@ -38,5 +40,12 @@ export function worldToDebugEntities(world: World, catalog: VariantCatalog): Ent
   const obstacleObbs = obstacleFootprints(world).map((obb, i) =>
     obbEntity(`debug:obstacle:${i}`, obb, OBSTACLE_COLOR),
   );
-  return [...rigObbs, ...obstacleObbs];
+  const bounds: Entity = {
+    id: "debug:bounds",
+    position: { x: 0, y: 0 },
+    rotation: 0 as Radians,
+    size: { width: world.bounds.width as Metres, length: world.bounds.height as Metres },
+    visual: { kind: "rect", style: { ...outlineStyle(BOUNDS_COLOR), strokeWidth: 0.12 as Metres } },
+  };
+  return [bounds, ...rigObbs, ...obstacleObbs];
 }

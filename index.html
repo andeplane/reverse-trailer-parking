@@ -305,6 +305,37 @@
       .editor-topbar .editor-save {
         background: linear-gradient(180deg, #2f7fd6, #2565ad);
       }
+      .editor-topbar .editor-debug.active {
+        background: linear-gradient(180deg, #d9822b, #b5661a);
+        border-color: #f0b070;
+      }
+      .editor-car-flyout {
+        display: none;
+        flex-direction: column;
+        gap: 4px;
+        margin-top: 4px;
+        padding: 6px;
+        border-radius: 10px;
+        background: rgba(12, 14, 18, 0.92);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+      }
+      .editor-car-flyout.open {
+        display: flex;
+      }
+      .editor-car-chip {
+        padding: 7px 12px;
+        border: 2px solid rgba(255, 255, 255, 0.14);
+        border-radius: 7px;
+        background: rgba(55, 60, 68, 0.95);
+        color: #fff;
+        font: 600 13px system-ui, sans-serif;
+        text-align: left;
+        text-transform: capitalize;
+        cursor: pointer;
+      }
+      .editor-car-chip:hover {
+        background: rgba(70, 76, 86, 0.98);
+      }
 
       /* Landscape: keep the drive buttons reachable without overlapping the slider. */
       @media (orientation: landscape) and (max-height: 480px) {
