@@ -5,7 +5,7 @@ import type { Vec2 } from "../../engine/math/vec2";
  * are solid (collidable); `tree` is a canopy over grass (also solid). `rot` is 0..3 quarter turns
  * (only meaningful for directional tiles like bays and curbs).
  */
-export type TileType = "asphalt" | "grass" | "bay" | "curb" | "hedge" | "tree";
+export type TileType = "asphalt" | "grass" | "bay" | "bay-open" | "curb" | "curb-corner" | "hedge" | "tree";
 
 export interface Tile {
   type: TileType;
@@ -19,10 +19,19 @@ export interface TileGrid {
   cells: Tile[]; // length cols*rows, row-major (row 0 = top)
 }
 
-export const ALL_TILE_TYPES: readonly TileType[] = ["asphalt", "grass", "bay", "curb", "hedge", "tree"];
+export const ALL_TILE_TYPES: readonly TileType[] = [
+  "asphalt",
+  "grass",
+  "bay",
+  "bay-open",
+  "curb",
+  "curb-corner",
+  "hedge",
+  "tree",
+];
 
 /** Tiles that block the rig. */
-export const SOLID_TILES: ReadonlySet<TileType> = new Set<TileType>(["curb", "hedge", "tree"]);
+export const SOLID_TILES: ReadonlySet<TileType> = new Set<TileType>(["curb", "curb-corner", "hedge", "tree"]);
 
 /** Tiles rendered above vehicles (canopy). */
 export const CANOPY_TILES: ReadonlySet<TileType> = new Set<TileType>(["tree"]);

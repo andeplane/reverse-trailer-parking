@@ -78,11 +78,12 @@ export function createPhaserSurface(args: {
         drawRect(g, spec);
         placed.set(id, { obj: g, rotationOffset: 0 });
       },
-      setTransform(id: string, x: number, y: number, rotation: number): void {
+      setTransform(id: string, x: number, y: number, rotation: number, depth: number): void {
         const item = placed.get(id);
         if (!item) return;
         item.obj.setPosition(x * PIXELS_PER_METRE, -y * PIXELS_PER_METRE);
         item.obj.setRotation(-rotation + item.rotationOffset);
+        item.obj.setDepth(depth);
       },
       remove(id: string): void {
         placed.get(id)?.obj.destroy();

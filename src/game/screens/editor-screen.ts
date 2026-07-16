@@ -8,10 +8,12 @@ import {
   carAt,
   carOverlaps,
   emptyLevel,
+  exitGateAt,
   levelCarObb,
   snapExitToEdge,
   type EditorHit,
 } from "../level/editor-model";
+import { length, sub } from "../../engine/math/vec2";
 import { cellCenter, withTile, worldToCell, type TileType } from "../level/tile-types";
 import { worldToEntities } from "../view/world-view";
 import { worldToDebugEntities } from "../view/debug-view";
@@ -45,8 +47,10 @@ const CAR_VARIANT_IDS = allCarVariants.map((v) => v.id);
 const TILE_BRUSHES: { tile: TileType; label: string }[] = [
   { tile: "asphalt", label: "Asphalt" },
   { tile: "grass", label: "Grass" },
-  { tile: "bay", label: "Parking bay" },
+  { tile: "bay", label: "Bay (closed end)" },
+  { tile: "bay-open", label: "Bay (open)" },
   { tile: "curb", label: "Curb" },
+  { tile: "curb-corner", label: "Curb corner" },
   { tile: "hedge", label: "Hedge" },
   { tile: "tree", label: "Tree" },
 ];
@@ -280,9 +284,11 @@ export function createEditorScreen(args: {
 
     if (tool.kind === "car") placeCar(p);
     else if (tool.kind === "drivable") moveDrivable(p);
-    else if (tool.kind === "exit" && dragMode === "rect") {
+    else if (tool.kind === "exit") {
       pushUndo();
-      level = { ...level, exit: snapExitToEdge(start, p, level.grid) };
+      // A drag sets a custom-width gate; a click drops a standard-width gate at the nearest edge.
+      const dragged = length(sub(p, start)) > 1.5;
+      level = { ...level, exit: dragged ? snapExitToEdge(start, p, level.grid) : exitGateAt(p, level.grid) };
     }
 
     dragMode = "none";
@@ -462,6 +468,24 @@ export function createEditorScreen(args: {
           visual: { kind: "sprite", texture: variant.texture },
         },
         outlineEntity("editor:preview:box", obb.center, obb.rotation, (obb.halfW * 2) as Metres, (obb.halfL * 2) as Metres, ok ? 0x39ff14 : 0xff3b30),
+      ];
+    }
+    if (tool.kind === "exit") {
+      const gate = exitGateAt(hover, level.grid);
+      const seg = sub(gate.b, gate.a);
+      const len = Math.max(length(seg), 0.1) as Metres;
+      const mid = { x: (gate.a.x + gate.b.x) / 2, y: (gate.a.y + gate.b.y) / 2 };
+      return [
+        {
+          id: "editor:preview:exit",
+          position: mid,
+          rotation: Math.atan2(seg.y, seg.x) as Radians,
+          size: { width: 0.7 as Metres, length: len },
+          visual: {
+            kind: "rect",
+            style: { fillColor: 0xffd23f, fillAlpha: 0.55, strokeColor: 0x39ff14, strokeWidth: 0.16 as Metres, cornerRadius: 0.1 as Metres },
+          },
+        },
       ];
     }
     return [];

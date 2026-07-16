@@ -44,7 +44,7 @@ export function createPhaserRenderer(args: { surface: PhaserSurface }): Renderer
         }
       }
 
-      for (const entity of entities) {
+      entities.forEach((entity, index) => {
         const key = visualKey(entity);
         const current = live.get(entity.id);
         if (current !== key) {
@@ -53,8 +53,9 @@ export function createPhaserRenderer(args: { surface: PhaserSurface }): Renderer
           create(entity);
           live.set(entity.id, key);
         }
-        surface.setTransform(entity.id, entity.position.x, entity.position.y, entity.rotation);
-      }
+        // Depth = position in the entity list, so z-order stays correct even after a recreate.
+        surface.setTransform(entity.id, entity.position.x, entity.position.y, entity.rotation, index);
+      });
     },
 
     follow(target: Vec2): void {

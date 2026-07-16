@@ -138,6 +138,17 @@ describe("createEditorScreen", () => {
     expect(renderer.last.some((e) => e.id.startsWith("editor:preview"))).toBe(true);
   });
 
+  it("shows an exit-gate preview when hovering with the Exit tool", () => {
+    const { screen, controlsRoot, renderer } = mount({ x: 30, y: 2 });
+    (controlsRoot.querySelector(".editor-tool:nth-last-child(2)") as HTMLElement)?.click();
+    // The Exit tool button:
+    const exitBtn = [...controlsRoot.querySelectorAll(".editor-tool")].find((b) => b.textContent === "Exit gate") as HTMLElement;
+    exitBtn.click();
+    capture(controlsRoot).dispatchEvent(pointer("pointermove"));
+    screen.tick();
+    expect(renderer.last.some((e) => e.id === "editor:preview:exit")).toBe(true);
+  });
+
   it("rotates the car under the cursor with R and syncs the brush rotation", () => {
     const { controlsRoot, getSaved } = mount({ x: 6.5, y: 2 });
     const cap = capture(controlsRoot);

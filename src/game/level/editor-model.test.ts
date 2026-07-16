@@ -3,7 +3,7 @@ import type { Radians } from "../../engine/math/angles";
 import { allCarVariants, allTrailerVariants, createVariantCatalog } from "../vehicle/variants";
 import type { Level, LevelCar } from "./level-types";
 import { filledGrid } from "./tile-types";
-import { carAt, carOverlaps, emptyLevel, pointInObb, snapExitToEdge } from "./editor-model";
+import { carAt, carOverlaps, emptyLevel, exitGateAt, pointInObb, snapExitToEdge } from "./editor-model";
 
 const catalog = createVariantCatalog({ cars: allCarVariants, trailers: allTrailerVariants });
 
@@ -77,5 +77,16 @@ describe("snapExitToEdge", () => {
     const exit = snapExitToEdge({ x: -3, y: -14 }, { x: 3, y: -16 }, grid);
     expect(exit.a.y).toBeCloseTo(-15);
     expect(exit.outward).toEqual({ x: 0, y: -1 });
+  });
+});
+
+describe("exitGateAt", () => {
+  const grid = filledGrid(8, 6, 5); // 40 x 30, hw=20, hh=15
+  it("builds a fixed-width gate on the nearest edge centred on the cursor", () => {
+    const gate = exitGateAt({ x: 19, y: 2 }, grid, 8);
+    expect(gate.a.x).toBeCloseTo(20); // snapped to right edge
+    expect(gate.b.x).toBeCloseTo(20);
+    expect(Math.abs(gate.b.y - gate.a.y)).toBeCloseTo(8); // requested width
+    expect(gate.outward).toEqual({ x: 1, y: 0 });
   });
 });

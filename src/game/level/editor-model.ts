@@ -75,6 +75,15 @@ export function carOverlaps(level: Level, candidate: LevelCar, catalog: VariantC
   return false;
 }
 
+/** A fixed-width exit gate centred at the cursor's projection onto the nearest playfield edge. */
+export function exitGateAt(p: Vec2, grid: Level["grid"], width = 8): ExitLine {
+  const half = width / 2;
+  if (grid.tileSize > 0) {
+    return snapExitToEdge({ x: p.x - half, y: p.y - half }, { x: p.x + half, y: p.y + half }, grid);
+  }
+  return snapExitToEdge(p, p, grid);
+}
+
 /** Snaps a dragged exit segment to the nearest playfield edge and derives the outward normal. */
 export function snapExitToEdge(a: Vec2, b: Vec2, grid: Level["grid"]): ExitLine {
   const hw = gridWidth(grid) / 2;
