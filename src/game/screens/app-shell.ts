@@ -78,8 +78,9 @@ export function createApp(args: {
     active = next;
   }
 
-  /** Play an editor draft; leaving the run returns to the editor with the draft intact. */
-  function testDraft(draft: Level): void {
+  /** Play an editor draft; leaving the run returns to the editor with the draft AND its
+   * unsaved-changes baseline intact (so exiting afterwards still prompts to save). */
+  function testDraft(draft: Level, savedState: string): void {
     swap(
       createPlayScreen({
         clock,
@@ -87,8 +88,24 @@ export function createApp(args: {
         controlsRoot,
         level: draft,
         catalog,
-        onExitToMenu: () => app.openEditor(draft),
+        onExitToMenu: () => openEditorScreen(draft, savedState),
         ...(isTouch !== undefined ? { isTouch } : {}),
+      }),
+    );
+  }
+
+  function openEditorScreen(initial: Level, savedState?: string): void {
+    clearWorld();
+    swap(
+      createEditorScreen({
+        renderer,
+        controlsRoot,
+        catalog,
+        initial,
+        ...(savedState !== undefined ? { savedState } : {}),
+        onExitToMenu: () => app.showMenu(),
+        onTest: (draft, baseline) => testDraft(draft, baseline),
+        onSave: (level) => saveLevel(level),
       }),
     );
   }
@@ -129,18 +146,7 @@ export function createApp(args: {
       );
     },
     openEditor(initial?: Level): void {
-      clearWorld();
-      swap(
-        createEditorScreen({
-          renderer,
-          controlsRoot,
-          catalog,
-          initial: initial ?? newDraft(),
-          onExitToMenu: () => app.showMenu(),
-          onTest: (draft) => testDraft(draft),
-          onSave: (level) => saveLevel(level),
-        }),
-      );
+      openEditorScreen(initial ?? newDraft());
     },
     dispose(): void {
       active?.dispose();

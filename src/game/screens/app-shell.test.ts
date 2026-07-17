@@ -172,4 +172,18 @@ describe("createApp", () => {
     expect(controlsRoot.querySelector(".editor-screen")).not.toBeNull();
     expect((controlsRoot.querySelector(".editor-name") as HTMLInputElement).value).toBe("Draft under test");
   });
+
+  it("still guards unsaved changes after a Test round-trip (baseline survives)", () => {
+    const { app, controlsRoot } = makeApp();
+    app.openEditor();
+    const name = controlsRoot.querySelector(".editor-name") as HTMLInputElement;
+    name.value = "Never saved";
+    name.dispatchEvent(new Event("input", { bubbles: true }));
+    (controlsRoot.querySelector(".editor-test") as HTMLElement).click();
+    (controlsRoot.querySelector(".play-back-button") as HTMLElement).click();
+    // Back in the editor: the draft was never persisted, so exiting must still prompt.
+    (controlsRoot.querySelector(".editor-menu") as HTMLElement).click();
+    expect(controlsRoot.querySelector(".editor-exit-dialog.open")).not.toBeNull();
+    expect(controlsRoot.querySelector(".menu-screen")).toBeNull();
+  });
 });

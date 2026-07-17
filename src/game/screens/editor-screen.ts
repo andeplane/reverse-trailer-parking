@@ -119,8 +119,11 @@ export function createEditorScreen(args: {
   controlsRoot: HTMLElement;
   catalog: VariantCatalog;
   initial?: Level;
+  /** Serialized last-persisted state, so the unsaved-changes guard survives a Test ▸ round-trip. */
+  savedState?: string;
   onExitToMenu: () => void;
-  onTest: (level: Level) => void;
+  /** Called with the draft AND the current persisted baseline (thread both back via `initial`/`savedState`). */
+  onTest: (level: Level, savedState: string) => void;
   onSave: (level: Level) => void;
 }): Screen {
   const { renderer, controlsRoot, catalog, onExitToMenu, onTest, onSave } = args;
@@ -330,10 +333,11 @@ export function createEditorScreen(args: {
   });
   topButton("＋", "editor-zoom", () => (camera.zoom *= 1.2));
   topButton("－", "editor-zoom", () => (camera.zoom /= 1.2));
-  topButton("Test ▸", "editor-test", () => onTest(level));
+  topButton("Test ▸", "editor-test", () => onTest(level, savedJson));
 
-  // Dirty tracking: leaving the editor must NEVER silently lose work.
-  let savedJson = JSON.stringify(level);
+  // Dirty tracking: leaving the editor must NEVER silently lose work. The baseline is the
+  // last-persisted state — threaded through Test ▸ round-trips via args.savedState.
+  let savedJson = args.savedState ?? JSON.stringify(level);
   function isDirty(): boolean {
     return JSON.stringify(level) !== savedJson;
   }
