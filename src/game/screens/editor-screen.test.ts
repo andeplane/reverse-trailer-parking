@@ -102,6 +102,23 @@ describe("createEditorScreen", () => {
     expect(getSaved()?.grid.cells.some((c) => c.type === "grass")).toBe(true);
   });
 
+  it("bay brush paints the full 2-tile bay (closed end + entrance) in one click", () => {
+    const { controlsRoot, getSaved } = mount({ x: 0.5, y: 0.5 });
+    (controlsRoot.querySelector('[data-tile="bay"]') as HTMLElement).click();
+    const cap = capture(controlsRoot);
+    cap.dispatchEvent(pointer("pointerdown"));
+    cap.dispatchEvent(pointer("pointerup"));
+    save(controlsRoot);
+    const cells = getSaved()!.grid.cells;
+    expect(cells.filter((c) => c.type === "bay")).toHaveLength(1);
+    expect(cells.filter((c) => c.type === "bay-open")).toHaveLength(1);
+    // rot 0 opens south: the entrance sits one row below the closed end.
+    const grid = getSaved()!.grid;
+    const closedIndex = cells.findIndex((c) => c.type === "bay");
+    const openIndex = cells.findIndex((c) => c.type === "bay-open");
+    expect(openIndex - closedIndex).toBe(grid.cols);
+  });
+
   it("paints a tile onto the grid where the pointer maps", () => {
     const { controlsRoot, getSaved } = mount({ x: 0, y: 0 });
     (controlsRoot.querySelector('[data-tile="grass"]') as HTMLElement).click();

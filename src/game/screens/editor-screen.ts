@@ -19,10 +19,13 @@ import {
 import { length, sub } from "../../engine/math/vec2";
 import {
   bayMarkedSides,
+  bayOpeningOffset,
+  bayOpenRotFor,
   cellCenter,
   curbAt,
   CURB_THICKNESS,
   edgeSegment,
+  inBounds,
   nearestEdge,
   sideEdge,
   withCurb,
@@ -433,6 +436,13 @@ export function createEditorScreen(args: {
     if (painted.has(key)) return;
     painted.add(key);
     level = { ...level, grid: withTile(level.grid, cell.col, cell.row, { type: tool.tile, rot: brushRot }) };
+    if (tool.tile === "bay") {
+      // A bay is closed end + entrance: paint the full pair in one stroke.
+      const { dc, dr } = bayOpeningOffset(brushRot);
+      const open = { col: cell.col + dc, row: cell.row + dr };
+      painted.add(`${open.col},${open.row}`); // don't overwrite it later in the same stroke
+      level = { ...level, grid: withTile(level.grid, open.col, open.row, { type: "bay-open", rot: bayOpenRotFor(brushRot) }) };
+    }
   }
 
   function paintCurb(p: Vec2, prefer?: "h" | "v"): void {
@@ -740,11 +750,44 @@ export function createEditorScreen(args: {
           visual: { kind: "sprite", texture: "tile-tree" },
         });
       }
-      overlay.push(outlineEntity("editor:preview:box", center, 0 as Radians, size, size, 0x39ff14));
-      // Bay tiles preview their painted lines on top of the outline so the opening side reads clearly.
-      bayMarkedSides(tool.tile, brushRot).forEach((side, i) => {
-        const { a, b } = edgeSegment(level.grid, sideEdge(cell.col, cell.row, side));
-        overlay.push(stripEntity(`editor:preview:line:${i}`, a, b, BAY_LINE_WIDTH, 0xffffff, 1));
+      const lineSides: { col: number; row: number; sides: ReturnType<typeof bayMarkedSides> }[] = [
+        { col: cell.col, row: cell.row, sides: bayMarkedSides(tool.tile, brushRot) },
+      ];
+      // The bay brush paints the whole 2-tile bay, so its ghost shows both cells.
+      const { dc, dr } = bayOpeningOffset(brushRot);
+      const openCell = { col: cell.col + dc, row: cell.row + dr };
+      const hasOpenCell = tool.tile === "bay" && inBounds(level.grid, openCell.col, openCell.row);
+      if (hasOpenCell) {
+        const openCenter = cellCenter(level.grid, openCell.col, openCell.row);
+        ground.push({
+          id: "editor:preview:tile2",
+          position: openCenter,
+          rotation: 0 as Radians,
+          size: { width: size, length: size },
+          visual: { kind: "sprite", texture: tileGroundTexture("bay-open") },
+        });
+        lineSides.push({ ...openCell, sides: bayMarkedSides("bay-open", bayOpenRotFor(brushRot)) });
+        const mid = { x: (center.x + openCenter.x) / 2, y: (center.y + openCenter.y) / 2 };
+        const isVertical = dc === 0;
+        overlay.push(
+          outlineEntity(
+            "editor:preview:box",
+            mid,
+            0 as Radians,
+            (isVertical ? size * 2 : size) as Metres,
+            (isVertical ? size : size * 2) as Metres,
+            0x39ff14,
+          ),
+        );
+      } else {
+        overlay.push(outlineEntity("editor:preview:box", center, 0 as Radians, size, size, 0x39ff14));
+      }
+      // Painted bay lines draw on top of the outline so the opening side reads clearly.
+      lineSides.forEach(({ col, row, sides }, cellIndex) => {
+        sides.forEach((side, i) => {
+          const { a, b } = edgeSegment(level.grid, sideEdge(col, row, side));
+          overlay.push(stripEntity(`editor:preview:line:${cellIndex}:${i}`, a, b, BAY_LINE_WIDTH, 0xffffff, 1));
+        });
       });
       return { ground, vehicles: [], overlay };
     }
