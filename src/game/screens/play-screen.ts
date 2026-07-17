@@ -17,7 +17,7 @@ import type { Screen } from "./screen";
 function makeSteeringIndicator(parent: HTMLElement): HTMLElement {
   const el = document.createElement("div");
   el.id = "steering-indicator";
-  el.style.backgroundImage = "url(/assets/steering-wheel.png)";
+  el.style.backgroundImage = `url(${import.meta.env.BASE_URL}assets/steering-wheel.png)`;
   parent.appendChild(el);
   return el;
 }
