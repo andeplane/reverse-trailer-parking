@@ -44,7 +44,8 @@ export function worldToDebugEntities(world: World, catalog: VariantCatalog): Ent
     id: "debug:bounds",
     position: { x: 0, y: 0 },
     rotation: 0 as Radians,
-    size: { width: world.bounds.width as Metres, length: world.bounds.height as Metres },
+    // A rect's `length` runs along its rotation axis (+x at rotation 0), `width` across it.
+    size: { width: world.bounds.height as Metres, length: world.bounds.width as Metres },
     visual: { kind: "rect", style: { ...outlineStyle(BOUNDS_COLOR), strokeWidth: 0.12 as Metres } },
   };
   return [bounds, ...rigObbs, ...obstacleObbs];

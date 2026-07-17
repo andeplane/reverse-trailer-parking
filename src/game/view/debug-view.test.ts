@@ -19,9 +19,10 @@ describe("worldToDebugEntities", () => {
   });
 
   it("includes the field bounds, the drivable rig, and every obstacle", () => {
+    // `length` runs along +x (rotation 0), so it must be the bounds *width*.
     expect(entities.find((e) => e.id === "debug:bounds")?.size).toEqual({
-      width: world.bounds.width,
-      length: world.bounds.height,
+      width: world.bounds.height,
+      length: world.bounds.width,
     });
     expect(entities.filter((e) => e.id.startsWith("debug:rig:")).length).toBe(2); // sedan + caravan
     expect(entities.filter((e) => e.id.startsWith("debug:obstacle:")).length).toBeGreaterThanOrEqual(
