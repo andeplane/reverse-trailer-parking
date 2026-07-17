@@ -70,6 +70,33 @@ export function createPlayScreen(args: {
   backButton.addEventListener("click", onExitToMenu);
   controlsRoot.appendChild(backButton);
 
+  const restartButton = document.createElement("button");
+  restartButton.type = "button";
+  restartButton.className = "play-restart-button";
+  restartButton.textContent = "↺ Restart";
+  restartButton.addEventListener("click", reset);
+  controlsRoot.appendChild(restartButton);
+
+  // First-time guidance: state the goal + controls, dismissed by the first input (or 8s).
+  const banner = document.createElement("div");
+  banner.className = "play-banner";
+  const goal = document.createElement("p");
+  goal.className = "play-banner-goal";
+  goal.textContent = "Back the trailer out through the yellow gate";
+  const how = document.createElement("p");
+  how.className = "play-banner-controls";
+  how.textContent = isTouch ? "Pedals drive · right slider steers" : "↑ ↓ drive · ← → steer · R restarts";
+  banner.append(goal, how);
+  controlsRoot.appendChild(banner);
+  const dismissBanner = (): void => {
+    banner.remove();
+    window.removeEventListener("keydown", dismissBanner);
+    window.removeEventListener("pointerdown", dismissBanner);
+  };
+  window.addEventListener("keydown", dismissBanner);
+  window.addEventListener("pointerdown", dismissBanner);
+  const bannerTimer = setTimeout(dismissBanner, 8000);
+
   const sandbox = createSandbox({ clock, input, renderer, world, steeringEl });
   sandboxRef.current = sandbox;
 
@@ -126,10 +153,13 @@ export function createPlayScreen(args: {
     },
     dispose(): void {
       window.removeEventListener("keydown", onKeyDown);
+      clearTimeout(bannerTimer);
+      dismissBanner();
       if (sandbox.isDebug()) clearDebugUrl();
       winOverlay?.dispose();
       for (const d of disposers) d();
       backButton.remove();
+      restartButton.remove();
       steeringEl.remove();
       sandbox.dispose();
     },

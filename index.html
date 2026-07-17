@@ -259,11 +259,11 @@
       .win-buttons .win-next {
         background: linear-gradient(180deg, #2f7fd6, #2565ad);
       }
-      .play-back-button {
+      .play-back-button,
+      .play-restart-button {
         position: absolute;
         top: max(16px, env(safe-area-inset-top, 0px));
         left: 50%;
-        transform: translateX(-50%);
         padding: 8px 16px;
         border: 2px solid rgba(255, 255, 255, 0.25);
         border-radius: 20px;
@@ -273,6 +273,39 @@
           600 14px system-ui,
           sans-serif;
         cursor: pointer;
+      }
+      .play-back-button {
+        transform: translateX(calc(-50% + 62px));
+      }
+      .play-restart-button {
+        transform: translateX(calc(-50% - 62px));
+      }
+      .play-banner {
+        position: absolute;
+        top: max(70px, calc(env(safe-area-inset-top, 0px) + 54px));
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        padding: 12px 22px;
+        border-radius: 14px;
+        background: rgba(20, 23, 28, 0.85);
+        border: 2px solid rgba(255, 255, 255, 0.14);
+        pointer-events: none;
+        max-width: calc(100vw - 24px);
+        text-align: center;
+      }
+      .play-banner-goal {
+        margin: 0;
+        color: #ffd23f;
+        font: 700 16px system-ui, sans-serif;
+      }
+      .play-banner-controls {
+        margin: 0;
+        color: #cdd3da;
+        font: 500 13px system-ui, sans-serif;
       }
 
       /* Level editor. */
