@@ -99,13 +99,21 @@ function exitEntity(exit: ExitLine): Entity {
   };
 }
 
+/** The world's entities split by draw layer (ground < vehicles < canopy), for callers that need
+ * to interleave their own entities at the right depth (e.g. editor placement ghosts). */
+export interface WorldLayers {
+  ground: Entity[];
+  vehicles: Entity[];
+  canopy: Entity[];
+}
+
 /**
- * World → Entity[] in ground→trailer→drawbar→car→wheels z-order. Vehicle bodies are roof-view
- * sprites; the drawbar rigidly links the car hitch to the trailer box front; wheels are drawn on
- * top so the **front wheels visibly rotate by the steer angle** while rear/trailer wheels track
- * their body heading.
+ * World → layered entities in ground→trailer→drawbar→car→wheels→canopy z-order. Vehicle bodies are
+ * roof-view sprites; the drawbar rigidly links the car hitch to the trailer box front; wheels are
+ * drawn on top so the **front wheels visibly rotate by the steer angle** while rear/trailer wheels
+ * track their body heading.
  */
-export function worldToEntities(world: World, catalog: VariantCatalog): Entity[] {
+export function worldToLayers(world: World, catalog: VariantCatalog): WorldLayers {
   const tiles = tileEntities(world.grid);
   // Tiles, then painted bay lines and curbs on top of them, then exit marker — all below vehicles.
   const ground: Entity[] = [...tiles.ground, ...bayLineEntities(world.grid), ...curbEntities(world.grid)];
@@ -181,5 +189,15 @@ export function worldToEntities(world: World, catalog: VariantCatalog): Entity[]
     );
   });
 
-  return [...ground, ...trailerBodies, ...drawbars, ...carBodies, ...wheels, ...canopy];
+  return {
+    ground,
+    vehicles: [...trailerBodies, ...drawbars, ...carBodies, ...wheels],
+    canopy,
+  };
+}
+
+/** World → flat Entity[] (list order = depth). */
+export function worldToEntities(world: World, catalog: VariantCatalog): Entity[] {
+  const layers = worldToLayers(world, catalog);
+  return [...layers.ground, ...layers.vehicles, ...layers.canopy];
 }
