@@ -2,10 +2,10 @@ import type { Radians } from "../../engine/math/angles";
 import type { MPerS } from "../../engine/math/units";
 import { obbMtv, type Obb } from "../../engine/math/obb";
 import { rotate, sub, type Vec2 } from "../../engine/math/vec2";
-import { carFootprint } from "../vehicle/vehicle-geometry";
+import { carFootprint, rearAxleForBodyCentre } from "../vehicle/vehicle-geometry";
 import { findCarVariant, type CarState, type VariantCatalog } from "../vehicle/vehicle-types";
 import type { ExitLine, Level, LevelCar } from "./level-types";
-import { filledGrid, gridHeight, gridWidth } from "./tile-types";
+import { filledGrid, gridHeight, gridWidth, resizeGrid } from "./tile-types";
 
 /** A blank level to start authoring from: an all-asphalt grid, a drivable rig, exit on the right. */
 export function emptyLevel(id: string): Level {
@@ -18,6 +18,54 @@ export function emptyLevel(id: string): Level {
     drivable: { variantId: "sedan", position: { x: -hw + 10, y: 0 }, heading: 0, trailerVariantId: "caravan" },
     placedCars: [],
     exit: { a: { x: hw, y: -3.5 }, b: { x: hw, y: 3.5 }, outward: { x: 1, y: 0 } },
+  };
+}
+
+/** A level car whose visible body centre sits at `centre` (positions store the rear-axle reference). */
+export function levelCarAtCentre(args: {
+  variantId: string;
+  centre: Vec2;
+  heading: number;
+  catalog: VariantCatalog;
+}): LevelCar {
+  const variant = findCarVariant(args.catalog, args.variantId);
+  return {
+    variantId: args.variantId,
+    position: rearAxleForBodyCentre({ centre: args.centre, heading: args.heading as Radians, variant }),
+    heading: args.heading,
+  };
+}
+
+/**
+ * The level with its grid resized to cols×rows (top-left anchored). Cars and the exit are
+ * translated so they stay glued to their tiles; placed cars falling outside the new field are
+ * dropped, the drivable rig is clamped inside, and the exit re-snaps to the nearest edge.
+ */
+export function resizeLevel(level: Level, cols: number, rows: number): Level {
+  const grid = resizeGrid(level.grid, cols, rows);
+  const dx = -(gridWidth(grid) - gridWidth(level.grid)) / 2;
+  const dy = (gridHeight(grid) - gridHeight(level.grid)) / 2;
+  const move = (p: Vec2): Vec2 => ({ x: p.x + dx, y: p.y + dy });
+  const hw = gridWidth(grid) / 2;
+  const hh = gridHeight(grid) / 2;
+  const isInField = (p: Vec2): boolean => Math.abs(p.x) <= hw && Math.abs(p.y) <= hh;
+  const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
+
+  const drivablePos = move(level.drivable.position);
+  // Clamping the translated exit into the smaller field can collapse it; fall back to a standard gate.
+  let exit = snapExitToEdge(move(level.exit.a), move(level.exit.b), grid);
+  if (Math.hypot(exit.b.x - exit.a.x, exit.b.y - exit.a.y) < 2) {
+    exit = exitGateAt({ x: (exit.a.x + exit.b.x) / 2, y: (exit.a.y + exit.b.y) / 2 }, grid);
+  }
+  return {
+    ...level,
+    grid,
+    drivable: {
+      ...level.drivable,
+      position: { x: clamp(drivablePos.x, -hw + 3, hw - 3), y: clamp(drivablePos.y, -hh + 3, hh - 3) },
+    },
+    placedCars: level.placedCars.map((c) => ({ ...c, position: move(c.position) })).filter((c) => isInField(c.position)),
+    exit,
   };
 }
 

@@ -2,8 +2,18 @@ import { describe, expect, it } from "vitest";
 import type { Radians } from "../../engine/math/angles";
 import { allCarVariants, allTrailerVariants, createVariantCatalog } from "../vehicle/variants";
 import type { Level, LevelCar } from "./level-types";
-import { filledGrid } from "./tile-types";
-import { carAt, carOverlaps, emptyLevel, exitGateAt, pointInObb, snapExitToEdge } from "./editor-model";
+import { curbAt, filledGrid, tileAt, withCurb, withTile } from "./tile-types";
+import {
+  carAt,
+  carOverlaps,
+  emptyLevel,
+  exitGateAt,
+  levelCarAtCentre,
+  levelCarObb,
+  pointInObb,
+  resizeLevel,
+  snapExitToEdge,
+} from "./editor-model";
 
 const catalog = createVariantCatalog({ cars: allCarVariants, trailers: allTrailerVariants });
 
@@ -77,6 +87,50 @@ describe("snapExitToEdge", () => {
     const exit = snapExitToEdge({ x: -3, y: -14 }, { x: 3, y: -16 }, grid);
     expect(exit.a.y).toBeCloseTo(-15);
     expect(exit.outward).toEqual({ x: 0, y: -1 });
+  });
+});
+
+describe("levelCarAtCentre", () => {
+  it("places the car so its visible body centre lands exactly on the requested point", () => {
+    const centre = { x: 7, y: -3 };
+    const car = levelCarAtCentre({ variantId: "suv", centre, heading: Math.PI / 6, catalog });
+    const obb = levelCarObb(car, catalog);
+    expect(obb.center.x).toBeCloseTo(centre.x);
+    expect(obb.center.y).toBeCloseTo(centre.y);
+    expect(car.heading).toBeCloseTo(Math.PI / 6);
+  });
+});
+
+describe("resizeLevel", () => {
+  function baseLevel(): Level {
+    let grid = filledGrid(8, 6, 5); // 40 x 30
+    grid = withTile(grid, 1, 1, { type: "grass", rot: 0 });
+    grid = withCurb(grid, { o: "h", col: 1, row: 2 }, true);
+    return {
+      id: "t",
+      name: "T",
+      grid,
+      drivable: { variantId: "sedan", position: { x: 0, y: 0 }, heading: 0 },
+      placedCars: [{ variantId: "suv", position: { x: 17, y: -12 }, heading: 0 }],
+      exit: { a: { x: 20, y: -3 }, b: { x: 20, y: 3 }, outward: { x: 1, y: 0 } },
+    };
+  }
+
+  it("keeps tiles, curbs, cars, and the exit glued to the grid when growing", () => {
+    const lvl = resizeLevel(baseLevel(), 10, 6); // +2 cols → world shifts by dx=-5
+    expect(tileAt(lvl.grid, 1, 1)?.type).toBe("grass");
+    expect(curbAt(lvl.grid, { o: "h", col: 1, row: 2 })).toBe(true);
+    expect(lvl.drivable.position.x).toBeCloseTo(-5); // translated with the tiles
+    expect(lvl.placedCars[0]?.position.x).toBeCloseTo(12);
+    expect(lvl.exit.a.x).toBeCloseTo(25); // re-snapped to the new right edge
+    expect(lvl.exit.outward).toEqual({ x: 1, y: 0 });
+  });
+
+  it("drops placed cars that fall outside when shrinking, and clamps the rig inside", () => {
+    const lvl = resizeLevel(baseLevel(), 4, 4); // 20 x 20
+    expect(lvl.placedCars).toHaveLength(0);
+    expect(Math.abs(lvl.drivable.position.x)).toBeLessThanOrEqual(10);
+    expect(Math.abs(lvl.drivable.position.y)).toBeLessThanOrEqual(10);
   });
 });
 
