@@ -122,6 +122,7 @@ export function createApp(args: {
           parent: controlsRoot,
           levels,
           customIds: new Set(customLevels().map((l) => l.id)),
+          bundledIds: new Set(bundled.map((l) => l.id)),
           onPlay: (level) => app.playLevel(level),
           onEdit: (level?: Level) => app.openEditor(level),
           onDelete: (level) => deleteLevel(level),

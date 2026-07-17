@@ -13,6 +13,9 @@ export function createMenuScreen(args: {
   levels: Level[];
   /** Ids of custom (editor-authored) levels — these get a delete action. */
   customIds?: ReadonlySet<string>;
+  /** Ids of bundled levels — a custom level with a bundled id is an override ("modified"),
+   * and deleting it restores the original rather than destroying anything. */
+  bundledIds?: ReadonlySet<string>;
   onPlay: (level: Level) => void;
   /** Open the editor: with a level to edit it, without to start a new one. */
   onEdit: (level?: Level) => void;
@@ -20,6 +23,7 @@ export function createMenuScreen(args: {
 }): Screen {
   const { parent, levels, onPlay, onEdit, onDelete } = args;
   const customIds = args.customIds ?? new Set<string>();
+  const bundledIds = args.bundledIds ?? new Set<string>();
 
   // At most one delete button is in its armed ("Sure?") state; clicking anywhere else disarms it.
   let disarmActiveDelete: (() => void) | null = null;
@@ -54,10 +58,11 @@ export function createMenuScreen(args: {
     name.className = "menu-level-name";
     name.textContent = level.name;
     card.appendChild(name);
+    const isOverride = customIds.has(level.id) && bundledIds.has(level.id);
     if (customIds.has(level.id)) {
       const badge = document.createElement("span");
       badge.className = "menu-level-badge";
-      badge.textContent = "custom";
+      badge.textContent = isOverride ? "modified" : "custom";
       card.appendChild(badge);
     }
     card.addEventListener("click", () => onPlay(level));
@@ -75,8 +80,8 @@ export function createMenuScreen(args: {
       const del = document.createElement("button");
       del.type = "button";
       del.className = "menu-level-action menu-level-delete";
-      del.title = `Delete “${level.name}”`;
-      del.textContent = "🗑";
+      del.title = isOverride ? `Remove changes to “${level.name}” (restores the original)` : `Delete “${level.name}”`;
+      del.textContent = isOverride ? "↺" : "🗑";
       del.addEventListener("click", () => {
         if (del.classList.contains("confirm")) {
           onDelete(level);
@@ -87,7 +92,7 @@ export function createMenuScreen(args: {
         del.textContent = "Sure?";
         disarmActiveDelete = () => {
           del.classList.remove("confirm");
-          del.textContent = "🗑";
+          del.textContent = isOverride ? "↺" : "🗑";
         };
       });
       row.appendChild(del);

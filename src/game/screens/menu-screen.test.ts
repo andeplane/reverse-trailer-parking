@@ -22,6 +22,7 @@ function mount(
   levels: Level[],
   hooks: {
     customIds?: ReadonlySet<string>;
+    bundledIds?: ReadonlySet<string>;
     onPlay?: (l: Level) => void;
     onEdit?: (l?: Level) => void;
     onDelete?: (l: Level) => void;
@@ -35,6 +36,7 @@ function mount(
     onPlay: hooks.onPlay ?? (() => {}),
     onEdit: hooks.onEdit ?? (() => {}),
     ...(hooks.customIds ? { customIds: hooks.customIds } : {}),
+    ...(hooks.bundledIds ? { bundledIds: hooks.bundledIds } : {}),
     ...(hooks.onDelete ? { onDelete: hooks.onDelete } : {}),
   });
   return { screen, parent };
@@ -103,6 +105,18 @@ describe("createMenuScreen", () => {
     expect(del.textContent).toBe("🗑");
     del.click(); // armed again, but still no delete without the second click
     expect(deleted).toEqual([]);
+  });
+
+  it("marks an overridden built-in as 'modified' with a restore (↺) action", () => {
+    const { parent } = mount([level("built", "Built-in")], {
+      customIds: new Set(["built"]),
+      bundledIds: new Set(["built"]),
+      onDelete: () => {},
+    });
+    expect(parent.querySelector(".menu-level-badge")?.textContent).toBe("modified");
+    const del = parent.querySelector(".menu-level-delete") as HTMLElement;
+    expect(del.textContent).toBe("↺");
+    expect(del.title).toContain("restores the original");
   });
 
   it("removes its DOM on dispose", () => {
