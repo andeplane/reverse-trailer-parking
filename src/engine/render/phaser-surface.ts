@@ -27,4 +27,6 @@ export interface PhaserSurface {
   setCamera(x: number, y: number, zoom: number): void;
   /** Converts a client (page) pixel position to a world point in metres. */
   clientToWorld(clientX: number, clientY: number): { x: number; y: number };
+  /** Converts a world point in metres to a client (page) pixel position. */
+  worldToClient(x: number, y: number): { x: number; y: number };
 }

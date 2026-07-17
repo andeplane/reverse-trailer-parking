@@ -70,6 +70,10 @@ export function createPhaserRenderer(args: { surface: PhaserSurface }): Renderer
       return surface.clientToWorld(clientX, clientY);
     },
 
+    worldToScreen(p: Vec2): { x: number; y: number } {
+      return surface.worldToClient(p.x, p.y);
+    },
+
     dispose(): void {
       for (const id of live.keys()) surface.remove(id);
       live.clear();

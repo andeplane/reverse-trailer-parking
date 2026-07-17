@@ -247,6 +247,17 @@
         color: #9fdcb0;
         font: 600 15px system-ui, sans-serif;
       }
+      .play-exit-arrow {
+        position: absolute;
+        display: none;
+        color: #ffd23f;
+        font-size: 30px;
+        text-shadow: 0 2px 6px rgba(0, 0, 0, 0.7);
+        pointer-events: none;
+      }
+      .play-exit-arrow.visible {
+        display: block;
+      }
       .play-timer {
         position: absolute;
         top: max(88px, calc(env(safe-area-inset-top, 0px) + 72px));

@@ -23,6 +23,7 @@ function fakeRenderer(worldPoint: Vec2): Renderer & { syncs: number; camera: num
       r.camera += 1;
     },
     screenToWorld: () => worldPoint,
+    worldToScreen: () => ({ x: 0, y: 0 }),
     dispose: () => {},
   };
   return r;

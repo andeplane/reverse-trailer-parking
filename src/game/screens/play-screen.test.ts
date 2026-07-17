@@ -23,6 +23,7 @@ function fakeRenderer(): Renderer {
     follow: () => {},
     setCamera: () => {},
     screenToWorld: () => ({ x: 0, y: 0 }),
+    worldToScreen: () => ({ x: 0, y: 0 }),
     dispose: () => {},
   };
 }

@@ -124,6 +124,29 @@ export function createPlayScreen(args: {
   const sandbox = createSandbox({ clock, input, renderer, world, steeringEl });
   sandboxRef.current = sandbox;
 
+  // Screen-edge arrow pointing at the exit when the follow-camera has it off-screen.
+  const exitArrow = document.createElement("div");
+  exitArrow.className = "play-exit-arrow";
+  exitArrow.textContent = "➤";
+  controlsRoot.appendChild(exitArrow);
+  function updateExitArrow(): void {
+    const exit = world.exit;
+    if (!exit) return;
+    const mid = renderer.worldToScreen({ x: (exit.a.x + exit.b.x) / 2, y: (exit.a.y + exit.b.y) / 2 });
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const offScreen = mid.x < 0 || mid.x > vw || mid.y < 0 || mid.y > vh;
+    exitArrow.classList.toggle("visible", offScreen);
+    if (!offScreen) return;
+    const margin = 30;
+    const x = Math.min(vw - margin, Math.max(margin, mid.x));
+    const y = Math.min(vh - margin, Math.max(margin, mid.y));
+    const angle = Math.atan2(mid.y - y, mid.x - x);
+    exitArrow.style.left = `${x}px`;
+    exitArrow.style.top = `${y}px`;
+    exitArrow.style.transform = `translate(-50%, -50%) rotate(${angle}rad)`;
+  }
+
   // When debug is on, keep the URL in sync with the rig's exact state so it can be copied and
   // pasted back to reproduce the scenario.
   function writeDebugUrl(): void {
@@ -175,6 +198,7 @@ export function createPlayScreen(args: {
       if (winOverlay) return; // frozen after winning until Retry/Next/Menu
       updateTimer();
       sandbox.tick(frameMs);
+      updateExitArrow();
       if (sandbox.isDebug() && ++framesSinceUrlWrite >= 20) {
         framesSinceUrlWrite = 0;
         writeDebugUrl();
@@ -191,6 +215,7 @@ export function createPlayScreen(args: {
       backButton.remove();
       restartButton.remove();
       timerEl.remove();
+      exitArrow.remove();
       steeringEl.remove();
       sandbox.dispose();
     },

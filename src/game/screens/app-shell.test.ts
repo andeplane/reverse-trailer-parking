@@ -26,6 +26,7 @@ function fakeRenderer(): Renderer & { syncs: Entity[][]; follows: Vec2[] } {
     follow: (t) => follows.push(t),
     setCamera: () => {},
     screenToWorld: () => ({ x: 0, y: 0 }),
+    worldToScreen: () => ({ x: 0, y: 0 }),
     dispose: () => {},
   };
 }
