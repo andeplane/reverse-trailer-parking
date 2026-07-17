@@ -8,13 +8,15 @@ export interface WinOverlay {
 export function createWinOverlay(args: {
   parent: HTMLElement;
   levelName: string;
+  /** Pre-formatted run time line, e.g. "Time 0:42 · par 1:30". */
+  timeText?: string;
   /** True when there is no next level — celebrate finishing the list. */
   isLastLevel?: boolean;
   onNext?: () => void;
   onRetry: () => void;
   onMenu: () => void;
 }): WinOverlay {
-  const { parent, levelName, isLastLevel, onNext, onRetry, onMenu } = args;
+  const { parent, levelName, timeText, isLastLevel, onNext, onRetry, onMenu } = args;
 
   const root = document.createElement("div");
   root.className = "win-overlay";
@@ -29,6 +31,12 @@ export function createWinOverlay(args: {
   subtitle.className = "win-subtitle";
   subtitle.textContent = levelName;
   panel.append(title, subtitle);
+  if (timeText) {
+    const time = document.createElement("p");
+    time.className = "win-time";
+    time.textContent = timeText;
+    panel.appendChild(time);
+  }
   if (isLastLevel) {
     const finished = document.createElement("p");
     finished.className = "win-finished";

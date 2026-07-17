@@ -37,6 +37,7 @@ function level(exit: Level["exit"]): Level {
     drivable: { variantId: "sedan", position: { x: 0, y: 0 }, heading: 0, trailerVariantId: "caravan" },
     placedCars: [],
     exit,
+    parSeconds: 60,
   };
 }
 
@@ -66,6 +67,13 @@ describe("createPlayScreen", () => {
     expect(controlsRoot.querySelector(".play-back-button")).not.toBeNull();
     expect(controlsRoot.querySelector(".play-restart-button")).not.toBeNull();
     expect(controlsRoot.querySelector(".play-banner")?.textContent).toContain("yellow gate");
+  });
+
+  it("shows a run timer with par, and the final time on the win overlay", () => {
+    const won = mount(level({ a: { x: 5, y: -30 }, b: { x: 5, y: 30 }, outward: { x: -1, y: 0 } }));
+    expect(won.controlsRoot.querySelector(".play-timer")?.textContent).toContain("par 1:00");
+    won.screen.tick(1000 / 60);
+    expect(won.controlsRoot.querySelector(".win-time")?.textContent).toMatch(/^Time \d+:\d\d · par 1:00$/);
   });
 
   it("dismisses the goal banner on the first input", () => {

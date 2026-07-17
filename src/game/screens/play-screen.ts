@@ -50,7 +50,31 @@ export function createPlayScreen(args: {
   const steeringEl = makeSteeringIndicator(controlsRoot);
 
   const sandboxRef: { current?: Sandbox } = {};
-  const reset = (): void => sandboxRef.current?.reset();
+  let runStart = clock.now();
+  const reset = (): void => {
+    sandboxRef.current?.reset();
+    runStart = clock.now();
+  };
+
+  function formatTime(seconds: number): string {
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m}:${String(s).padStart(2, "0")}`;
+  }
+  const timerEl = document.createElement("div");
+  timerEl.className = "play-timer";
+  controlsRoot.appendChild(timerEl);
+  function elapsedSeconds(): number {
+    return (clock.now() - runStart) / 1000;
+  }
+  function updateTimer(): void {
+    const text =
+      level.parSeconds !== undefined
+        ? `${formatTime(elapsedSeconds())} · par ${formatTime(level.parSeconds)}`
+        : formatTime(elapsedSeconds());
+    if (timerEl.textContent !== text) timerEl.textContent = text;
+  }
+  updateTimer();
 
   const disposers: Array<() => void> = [];
   let input: InputSource;
@@ -127,9 +151,14 @@ export function createPlayScreen(args: {
     if (!world.exit) return;
     const footprints = rigFootprints(toRig(drivableCar(world)), catalog);
     if (!hasRigCrossedExit(footprints, world.exit)) return;
+    const timeText =
+      level.parSeconds !== undefined
+        ? `Time ${formatTime(elapsedSeconds())} · par ${formatTime(level.parSeconds)}`
+        : `Time ${formatTime(elapsedSeconds())}`;
     winOverlay = createWinOverlay({
       parent: controlsRoot,
       levelName: level.name,
+      timeText,
       isLastLevel: isLastLevel ?? false,
       ...(onNextLevel ? { onNext: onNextLevel } : {}),
       onRetry: () => {
@@ -144,6 +173,7 @@ export function createPlayScreen(args: {
   return {
     tick(frameMs?: number): void {
       if (winOverlay) return; // frozen after winning until Retry/Next/Menu
+      updateTimer();
       sandbox.tick(frameMs);
       if (sandbox.isDebug() && ++framesSinceUrlWrite >= 20) {
         framesSinceUrlWrite = 0;
@@ -160,6 +190,7 @@ export function createPlayScreen(args: {
       for (const d of disposers) d();
       backButton.remove();
       restartButton.remove();
+      timerEl.remove();
       steeringEl.remove();
       sandbox.dispose();
     },
