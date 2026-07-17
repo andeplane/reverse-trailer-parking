@@ -16,12 +16,18 @@ Design/ADR: `specs/002-levels-editor/design.md`. The app is a **DOM screen state
 machine** in `src/game/screens/` (`AppShell`) over one shared Phaser surface —
 **not** Phaser Scenes (Phaser stays confined to `src/engine/render/`):
 
-- **Menu** (`menu-screen.ts`) lists levels; every level has an ✎ **edit** action
-  (editing a built-in saves a custom override), custom levels also get 🗑 delete
-  (behind a confirm) + a "custom" badge; "＋ New level" opens a blank editor.
+- **Menu** (`menu-screen.ts`) lists levels (built-ins easiest-first); every level
+  has an ✎ **edit** action (editing a built-in saves a custom override shown as
+  "modified" with a ↺ restore action), pure custom levels get 🗑 delete via an
+  **inline two-step confirm (🗑 → "Sure?")** + a "custom" badge; "＋ New level"
+  opens a blank editor with a **unique default name**. **NEVER use native browser
+  popups (alert/confirm/prompt)** — always in-app UI.
 - **Play** (`play-screen.ts`) drives a level via the sandbox, detects the **win**
   (car AND trailer fully cross the exit's outward half-plane — `level/win.ts`),
-  and shows a win overlay.
+  and shows a win overlay (with run time; celebrates when it was the last level).
+  HUD: transient goal/controls banner at start, ↺ Restart + ☰ Menu buttons, a
+  run-timer (with par), and a screen-edge ➤ arrow toward the exit when the
+  follow-camera has it off-screen (`Renderer.worldToScreen`).
 - **Editor** (`editor-screen.ts` + pure `editor-model.ts`) — see below.
 - The **app shell owns the bundled/custom split**: `createApp` takes bundled
   levels + a `LevelStorage`; custom levels merge on top by id on every menu
@@ -47,18 +53,25 @@ on asphalt). Built-in levels are code (`built-in-levels.ts`, `fallback-level.ts`
 custom editor levels persist to localStorage.
 
 **Editor UX** (issues hardened by an agent-browser e2e pass): topbar has the level
-**name input** and **cols×rows map-size inputs** (resize keeps content glued,
-re-snaps the exit, drops outside cars). Tools: tile brushes, **Curb (edges)**
+**name input** (selects on focus) and **cols×rows map-size inputs** (resize keeps
+content glued, re-snaps the exit, drops outside cars), zoom ± and a **⛶ fit-view**
+button. Tools: tile brushes (the **Bay brush paints the full 2-tile bay** —
+closed end at cursor + entrance in the opening direction), **Curb (edges)**
 (paint/erase the nearest edge; drag interpolates between samples and biases edge
 orientation to the drag direction), car picker flyout, exit gate, Select/Move.
 **Cars place continuously** (body centre at cursor, no snap; overlap is blocked with
-a red ghost). Keys: **R** rotates the hovered thing — cars in **−30° steps**
-(clockwise on screen), tiles a quarter turn; **Q** picks up whatever is hovered as
-the active tool (Factorio-style copy), Q again toggles Select/Move; **⌫** deletes
-the selected/hovered placed car (contextual 🗑 button appears too); ⌘Z undo; Esc
-cancel; Space/right-drag pans; wheel zooms. Save **validates** and toasts; a bottom
-hint bar lists shortcuts (hidden on touch). Typing in topbar inputs never triggers
-shortcuts. Camera/pointer glue leans on `Renderer.screenToWorld/setCamera`.
+a red ghost). **Placement ghosts render at their real layer** (tile ghosts below
+vehicles — `worldToLayers`). Keys: **R** rotates the hovered thing — cars in
+**−30° steps** (clockwise on screen), tiles a quarter turn; **Q** picks up whatever
+is hovered as the active tool (Factorio-style copy), Q again toggles Select/Move;
+**⌫** deletes the selected/hovered placed car; ⌘Z undo, **⇧⌘Z/Ctrl+Y redo**; Esc
+cancel; Space/right-drag pans; wheel zooms. **Touch:** two-pointer **pinch
+zoom/pan**; selecting shows a **⟲ ⟳ 🗑 toolbar**. Leaving with unsaved changes
+opens an in-app **Save & exit / Discard / Cancel** dialog (dirty baseline =
+last-persisted state, threaded through Test ▸ round-trips). Save **validates** and
+toasts; a bottom hint bar lists shortcuts (hidden on touch). Typing in topbar
+inputs never triggers shortcuts. Camera/pointer glue leans on
+`Renderer.screenToWorld/setCamera`.
 **Renderer note:** `sync()` recreates a drawn item when its texture/style/size
 changes for an existing id (so repainted tiles update). **Debug-view note:** a rect
 entity's `length` runs along its rotation axis (+x at rotation 0) — the bounds rect
