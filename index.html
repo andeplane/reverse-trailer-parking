@@ -1,0 +1,491 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <title>Reverse Trailer Parking</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        overscroll-behavior: none;
+        touch-action: none;
+        -webkit-user-select: none;
+        user-select: none;
+        background: #1a1a1a;
+      }
+
+      #app {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        touch-action: none;
+      }
+
+      #game-root {
+        position: absolute;
+        inset: 0;
+      }
+
+      #game-root canvas {
+        display: block;
+      }
+
+      #controls-root {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+
+      #controls-root > * {
+        pointer-events: auto;
+      }
+
+      /* Steering-wheel gauge (both desktop and mobile). */
+      #steering-indicator {
+        position: absolute;
+        top: 16px;
+        left: 16px;
+        width: 64px;
+        height: 64px;
+        background-size: contain;
+        background-repeat: no-repeat;
+        transform-origin: center;
+        filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6));
+      }
+
+      /* Touch controls overlay. */
+      .controls-overlay {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+      .controls-overlay > * {
+        pointer-events: auto;
+      }
+      .ctrl-btn {
+        position: absolute;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 2px solid rgba(255, 255, 255, 0.35);
+        border-radius: 50%;
+        background: rgba(28, 30, 34, 0.55);
+        color: #fff;
+        font-size: 30px;
+        line-height: 1;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .ctrl-forward,
+      .ctrl-reverse {
+        width: 80px;
+        height: 80px;
+        left: max(20px, env(safe-area-inset-left, 0px));
+      }
+      .ctrl-forward {
+        bottom: 130px;
+      }
+      .ctrl-reverse {
+        bottom: 32px;
+      }
+      .ctrl-reset {
+        width: 56px;
+        height: 56px;
+        right: max(20px, env(safe-area-inset-right, 0px));
+        top: max(20px, env(safe-area-inset-top, 0px));
+        font-size: 26px;
+      }
+      .ctrl-steer {
+        position: absolute;
+        right: max(24px, env(safe-area-inset-right, 0px));
+        bottom: 32px;
+        width: 56px;
+        height: 46vh;
+        max-height: 320px;
+        min-height: 180px;
+        writing-mode: vertical-lr;
+        direction: rtl;
+        accent-color: #2f7fd6;
+      }
+
+      /* Menu screen. */
+      .menu-screen {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 20px;
+        padding: 24px;
+        background: rgba(15, 18, 22, 0.72);
+        overflow-y: auto;
+      }
+      .menu-title {
+        margin: 0 0 8px;
+        color: #fff;
+        font:
+          700 clamp(24px, 6vw, 44px) / 1.1 system-ui,
+          sans-serif;
+        text-align: center;
+        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+      }
+      .menu-levels {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        width: min(420px, 90vw);
+      }
+      .menu-level-row {
+        display: flex;
+        align-items: stretch;
+        gap: 8px;
+      }
+      .menu-level-card {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 16px 20px;
+        border: 2px solid rgba(255, 255, 255, 0.18);
+        border-radius: 14px;
+        background: linear-gradient(180deg, #2f7fd6, #2565ad);
+        color: #fff;
+        font:
+          600 18px system-ui,
+          sans-serif;
+        cursor: pointer;
+      }
+      .menu-level-card:hover {
+        filter: brightness(1.08);
+      }
+      .menu-level-badge {
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.18);
+        font: 600 11px system-ui, sans-serif;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .menu-level-action {
+        width: 52px;
+        border: 2px solid rgba(255, 255, 255, 0.18);
+        border-radius: 14px;
+        background: rgba(40, 44, 50, 0.85);
+        color: #fff;
+        font-size: 18px;
+        cursor: pointer;
+      }
+      .menu-level-action:hover {
+        filter: brightness(1.15);
+      }
+      .menu-level-delete {
+        border-color: rgba(255, 120, 110, 0.4);
+      }
+      .menu-edit-button {
+        padding: 12px 20px;
+        border: 2px solid rgba(255, 255, 255, 0.25);
+        border-radius: 12px;
+        background: rgba(40, 44, 50, 0.85);
+        color: #fff;
+        font:
+          600 16px system-ui,
+          sans-serif;
+        cursor: pointer;
+      }
+      .win-overlay {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(10, 12, 15, 0.55);
+      }
+      .win-panel {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 14px;
+        padding: 28px 32px;
+        border-radius: 18px;
+        background: linear-gradient(180deg, #24303a, #18222b);
+        border: 2px solid rgba(255, 255, 255, 0.14);
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+      }
+      .win-title {
+        margin: 0;
+        color: #7CF29A;
+        font:
+          800 30px system-ui,
+          sans-serif;
+      }
+      .win-subtitle {
+        margin: 0;
+        color: #cdd3da;
+        font: 500 16px system-ui, sans-serif;
+      }
+      .win-buttons {
+        display: flex;
+        gap: 10px;
+        margin-top: 6px;
+      }
+      .win-buttons button {
+        padding: 10px 18px;
+        border-radius: 12px;
+        border: 2px solid rgba(255, 255, 255, 0.2);
+        font: 600 15px system-ui, sans-serif;
+        color: #fff;
+        cursor: pointer;
+        background: rgba(50, 55, 62, 0.9);
+      }
+      .win-buttons .win-next {
+        background: linear-gradient(180deg, #2f7fd6, #2565ad);
+      }
+      .play-back-button {
+        position: absolute;
+        top: max(16px, env(safe-area-inset-top, 0px));
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 8px 16px;
+        border: 2px solid rgba(255, 255, 255, 0.25);
+        border-radius: 20px;
+        background: rgba(28, 30, 34, 0.6);
+        color: #fff;
+        font:
+          600 14px system-ui,
+          sans-serif;
+        cursor: pointer;
+      }
+
+      /* Level editor. */
+      .editor-screen {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+      .editor-capture {
+        position: absolute;
+        inset: 0;
+        pointer-events: auto;
+        touch-action: none;
+        cursor: crosshair;
+      }
+      .editor-palette {
+        position: absolute;
+        top: 50%;
+        left: 12px;
+        transform: translateY(-50%);
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 8px;
+        border-radius: 12px;
+        background: rgba(20, 23, 28, 0.82);
+        pointer-events: auto;
+        max-height: calc(100vh - 24px);
+        overflow-y: auto;
+      }
+      .editor-tool,
+      .editor-cycle {
+        padding: 8px 12px;
+        border: 2px solid rgba(255, 255, 255, 0.16);
+        border-radius: 8px;
+        background: rgba(45, 50, 58, 0.9);
+        color: #fff;
+        font: 600 13px system-ui, sans-serif;
+        text-align: left;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .editor-tool.active {
+        background: linear-gradient(180deg, #2f7fd6, #2565ad);
+        border-color: #7fb2e8;
+      }
+      .editor-topbar {
+        position: absolute;
+        top: 12px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        align-items: center;
+        gap: 6px;
+        padding: 6px;
+        border-radius: 12px;
+        background: rgba(20, 23, 28, 0.82);
+        pointer-events: auto;
+        max-width: calc(100vw - 12px);
+      }
+      .editor-topbar button {
+        padding: 8px 14px;
+        border: 2px solid rgba(255, 255, 255, 0.16);
+        border-radius: 8px;
+        background: rgba(45, 50, 58, 0.9);
+        color: #fff;
+        font: 600 14px system-ui, sans-serif;
+        cursor: pointer;
+      }
+      .editor-topbar .editor-test {
+        background: linear-gradient(180deg, #35b36a, #268a50);
+      }
+      .editor-topbar .editor-save {
+        background: linear-gradient(180deg, #2f7fd6, #2565ad);
+      }
+      .editor-topbar .editor-debug.active {
+        background: linear-gradient(180deg, #d9822b, #b5661a);
+        border-color: #f0b070;
+      }
+      .editor-car-flyout {
+        display: none;
+        flex-direction: column;
+        gap: 4px;
+        margin-top: 4px;
+        padding: 6px;
+        border-radius: 10px;
+        background: rgba(12, 14, 18, 0.92);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+      }
+      .editor-car-flyout.open {
+        display: flex;
+      }
+      .editor-car-chip {
+        padding: 7px 12px;
+        border: 2px solid rgba(255, 255, 255, 0.14);
+        border-radius: 7px;
+        background: rgba(55, 60, 68, 0.95);
+        color: #fff;
+        font: 600 13px system-ui, sans-serif;
+        text-align: left;
+        text-transform: capitalize;
+        cursor: pointer;
+      }
+      .editor-car-chip:hover {
+        background: rgba(70, 76, 86, 0.98);
+      }
+      .editor-name {
+        width: clamp(90px, 16vw, 170px);
+        padding: 8px 10px;
+        border: 2px solid rgba(255, 255, 255, 0.16);
+        border-radius: 8px;
+        background: rgba(30, 33, 39, 0.95);
+        color: #fff;
+        font: 600 14px system-ui, sans-serif;
+      }
+      .editor-name:focus {
+        outline: none;
+        border-color: #7fb2e8;
+      }
+      .editor-size-wrap {
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        color: #9aa1ab;
+        font: 600 13px system-ui, sans-serif;
+      }
+      .editor-size {
+        width: 44px;
+        padding: 8px 4px 8px 8px;
+        border: 2px solid rgba(255, 255, 255, 0.16);
+        border-radius: 8px;
+        background: rgba(30, 33, 39, 0.95);
+        color: #fff;
+        font: 600 13px system-ui, sans-serif;
+      }
+      .editor-hints {
+        position: absolute;
+        bottom: 10px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 6px 14px;
+        border-radius: 14px;
+        background: rgba(20, 23, 28, 0.72);
+        color: #b7bec8;
+        font: 500 12px system-ui, sans-serif;
+        pointer-events: none;
+        white-space: nowrap;
+        max-width: calc(100vw - 24px);
+      }
+      /* Keyboard shortcuts are meaningless on touch devices. */
+      @media (pointer: coarse) {
+        .editor-hints {
+          display: none;
+        }
+      }
+      .editor-delete {
+        position: absolute;
+        bottom: 42px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: none;
+        padding: 9px 16px;
+        border: 2px solid rgba(255, 120, 110, 0.5);
+        border-radius: 10px;
+        background: rgba(120, 34, 28, 0.92);
+        color: #fff;
+        font: 600 13px system-ui, sans-serif;
+        cursor: pointer;
+        pointer-events: auto;
+      }
+      .editor-delete.visible {
+        display: block;
+      }
+      .editor-toast {
+        position: absolute;
+        top: 64px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 9px 18px;
+        border-radius: 10px;
+        background: rgba(38, 138, 80, 0.95);
+        color: #fff;
+        font: 600 14px system-ui, sans-serif;
+        pointer-events: none;
+        animation: editor-toast-fade 0.25s ease-out;
+      }
+      .editor-toast.error {
+        background: rgba(178, 48, 40, 0.95);
+      }
+      @keyframes editor-toast-fade {
+        from {
+          opacity: 0;
+          transform: translate(-50%, -6px);
+        }
+        to {
+          opacity: 1;
+          transform: translate(-50%, 0);
+        }
+      }
+
+      /* Landscape: keep the drive buttons reachable without overlapping the slider. */
+      @media (orientation: landscape) and (max-height: 480px) {
+        .ctrl-forward,
+        .ctrl-reverse {
+          width: 68px;
+          height: 68px;
+        }
+        .ctrl-forward {
+          bottom: 108px;
+        }
+        .ctrl-steer {
+          height: 70vh;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div id="game-root"></div>
+      <div id="controls-root"></div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -1,6 +1,7 @@
 <!-- SPECKIT START -->
-For additional context about technologies to be used, project structure,
-shell commands, and other important information, read the current plan
+Active feature plan: `specs/001-reverse-trailer-parking/plan.md`
+(with `research.md`, `data-model.md`, `contracts/`, `quickstart.md` alongside it).
+Read it for technologies, project structure, the vehicle-motion math, and test strategy.
 <!-- SPECKIT END -->
 
 # CLAUDE.md
@@ -9,21 +10,179 @@ When things change (architecture, game engine choice +++), ALWAYS update this fi
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## App structure (as built — Milestone 2: levels, editor, exit/win)
+
+Design/ADR: `specs/002-levels-editor/design.md`. The app is a **DOM screen state
+machine** in `src/game/screens/` (`AppShell`) over one shared Phaser surface —
+**not** Phaser Scenes (Phaser stays confined to `src/engine/render/`):
+
+- **Menu** (`menu-screen.ts`) lists levels; every level has an ✎ **edit** action
+  (editing a built-in saves a custom override), custom levels also get 🗑 delete
+  (behind a confirm) + a "custom" badge; "＋ New level" opens a blank editor.
+- **Play** (`play-screen.ts`) drives a level via the sandbox, detects the **win**
+  (car AND trailer fully cross the exit's outward half-plane — `level/win.ts`),
+  and shows a win overlay.
+- **Editor** (`editor-screen.ts` + pure `editor-model.ts`) — see below.
+- The **app shell owns the bundled/custom split**: `createApp` takes bundled
+  levels + a `LevelStorage`; custom levels merge on top by id on every menu
+  show, so deleting a custom override resurrects the bundled original.
+  **Testing an editor draft returns to the editor** with the draft intact.
+
+**Levels are tile maps + edge curbs + data** (`src/game/level/`): a `Level` has a
+**`TileGrid`** (`tile-types.ts`: asphalt/grass/bay/bay-open/hedge/tree cells with 0–3
+rotation, **plus `hCurbs`/`vCurbs` boolean arrays — curbs live on the edges BETWEEN
+tiles, not as tiles**) plus cars and an exit. Key geometry helpers: `EdgeRef`,
+`nearestEdge` (with drag-direction bias), `edgeSegment`, `curbRuns` (merges
+consecutive edges into straight runs), `resizeGrid`, `bayMarkedSides`/`bayLineEdges`
+(a `bay` opens S at rot 0, turning CCW per rot step; adjacent bays share one line).
+`levelToWorld()` derives the runtime `World` — solid tiles (hedge/tree) → cell-sized
+`solids`, **curb runs → thin OBB strips**, and it **opens a gap in the boundary for
+the exit**. **Bay lines and curbs are vector-drawn** (`src/game/view/tile-decor.ts`:
+pill-ended strips so corners join smoothly) — only asphalt/grass/hedge/tree have
+sprite textures. A parking bay is 1 tile wide × 2 tiles deep (`bay` + `bay-open`) at
+2.5 m tiles so every car variant fits. Cars are positioned by **rear-axle reference**;
+use `rearAxleForBodyCentre` / `levelCarAtCentre` to place by visible body centre.
+Legacy saves with `curb`/`curb-corner` tiles migrate on parse (outline of edge curbs
+on asphalt). Built-in levels are code (`built-in-levels.ts`, `fallback-level.ts`);
+custom editor levels persist to localStorage.
+
+**Editor UX** (issues hardened by an agent-browser e2e pass): topbar has the level
+**name input** and **cols×rows map-size inputs** (resize keeps content glued,
+re-snaps the exit, drops outside cars). Tools: tile brushes, **Curb (edges)**
+(paint/erase the nearest edge; drag interpolates between samples and biases edge
+orientation to the drag direction), car picker flyout, exit gate, Select/Move.
+**Cars place continuously** (body centre at cursor, no snap; overlap is blocked with
+a red ghost). Keys: **R** rotates the hovered thing — cars in **−30° steps**
+(clockwise on screen), tiles a quarter turn; **Q** picks up whatever is hovered as
+the active tool (Factorio-style copy), Q again toggles Select/Move; **⌫** deletes
+the selected/hovered placed car (contextual 🗑 button appears too); ⌘Z undo; Esc
+cancel; Space/right-drag pans; wheel zooms. Save **validates** and toasts; a bottom
+hint bar lists shortcuts (hidden on touch). Typing in topbar inputs never triggers
+shortcuts. Camera/pointer glue leans on `Renderer.screenToWorld/setCamera`.
+**Renderer note:** `sync()` recreates a drawn item when its texture/style/size
+changes for an existing id (so repainted tiles update). **Debug-view note:** a rect
+entity's `length` runs along its rotation axis (+x at rotation 0) — the bounds rect
+is `{width: bounds.height, length: bounds.width}`.
+
+**Deploy:** GitHub Pages via `.github/workflows/deploy.yml` (push to `main` →
+test → `vite build --base=/reverse-trailer-parking/` → deploy). All runtime asset
+URLs must be `import.meta.env.BASE_URL`-aware — never hard-code `/assets/...`.
+
+**Debug mode** (`d` key): draws collision-OBB outlines AND writes the rig's exact
+state to the URL (`?dbg=<levelId>&x=..&y=..&h=..&v=..&s=..&t=..`) so a pasted URL
+reproduces the scenario (`level/debug-state.ts`).
+
+## Rendering (as built — Milestone 1)
+
+The world is drawn as **realistic AI-generated top-down sprites**, matching a polished casual
+parking game (glossy cars, textured asphalt lot with bay lines + grass borders). Details:
+
+- **One sprite per vehicle body** (car + trailer), scaled to its **derived footprint**
+  (`bodyWidth`×`bodyLength`). Sprites are authored **nose-up** and trimmed to their true bounds so
+  footprint scaling is proportional (no stretching), with **clean edges** (no baked outline) and
+  pre-downscaled (LANCZOS) so runtime scaling stays crisp. **Front wheels are separate entities that
+  visibly rotate by the steer angle** (rear/trailer wheels track body heading), plus the steering-wheel
+  HUD gauge. The trailer is linked to the car hitch by a thin **vector drawbar rect**. Boundary walls
+  are rendered as visible concrete barriers.
+- **Collision ≠ sprite width**: the OBB uses a per-variant `collisionWidth` (the body, excluding
+  door mirrors) so collision matches the visible car, not the sprite's outer extent.
+- **Steering holds** (no self-centring); at the jackknife limit the car **binds** (stops) rather than
+  sliding the trailer sideways.
+- `src/game/view/world-view.ts` maps `World → Entity[]` where each `Entity` is a `sprite` or a `rect`
+  (`EntityVisual` union). `src/engine/render/create-phaser-surface.ts` owns the Phaser glue: `42→32`
+  pixels/metre, a **y-flip** (world +y up ↔ screen +y down) and rotation mapping `π/2 − θ` for nose-up
+  sprites (`−θ` for +x-forward rects), plus the static lot background image and viewport RESIZE handling.
+- **Variant geometry is tuned to match its sprite's aspect ratio** so footprints line up with the art.
+  Assets (committed by name in `public/assets/`): `car-{red,blue,green,orange,purple}.png`,
+  `trailer-{white,utility}.png`, `tile-{asphalt,grass,hedge,tree}.png`, `steering-wheel.png` (HUD).
+  The player is the red sedan+caravan; placed cars use the other colours/variants. Bay lines and
+  curbs are vector-drawn (no sprites). Regenerate via the `ai-image-generator`
+  skill (GPT Image 1.5, transparent, "top-down, straight overhead, no perspective/tilt"), then trim to
+  opaque bounds.
+- Collision is our own OBB/SAT (`src/game/collision/collision-system.ts`): path-sampled
+  bisect-to-contact + deepest-MTV push-out + tangent **sliding**, deterministic, tunnelling-proof.
+
 ## What This Repo Is
 
 A TypeScript game.
 
-**Game engine: UNDECIDED.** The leading candidate is **Phaser**, but this is
-not yet committed — do not assume Phaser, and equally do not assume there is no
-engine. Until the choice is made and recorded here, keep engine-specific code
-behind our own thin abstractions so the decision stays reversible. **When the
-engine is chosen, update this section immediately** with the choice, the
-version, and how it's wired in (per the update rule at the top of this file).
+**Game engine: Phaser 3** (decided 2026-07-14). Phaser is used **only for
+rendering, input, camera, and viewport scaling**, confined to `src/engine/` as a
+thin adapter. **We do NOT use Phaser's physics** (Arcade or Matter) for the
+vehicle — the car+trailer motion is our own code (see "Vehicle physics" below).
+Keep all Phaser imports inside `src/engine/`; `src/game/` stays engine-agnostic
+so the choice remains reversible.
 
-Regardless of the engine choice, keep **game-agnostic systems separated from
-game-specific logic** (see Architecture Principles). If we adopt an engine like
-Phaser, "our engine layer" becomes a thin adapter around it rather than a
-from-scratch implementation.
+Keep **game-agnostic systems separated from game-specific logic** (see
+Architecture Principles): "our engine layer" is a thin adapter around Phaser, not
+a from-scratch renderer.
+
+## Vehicle physics — our own kinematic model (NOT a physics engine)
+
+The car+trailer motion is hand-written, not from a rigid-body engine. Rules:
+
+- **Simple longitudinal dynamics**: throttle accelerates gradually up to a max
+  speed; releasing the throttle brakes to a full stop (no infinite coasting, no
+  instant jump to full speed). Same for reverse.
+- **Direction emerges from the wheels, not a set heading**: wheels roll in the
+  direction they point and cannot slide sideways. The car's turning is a
+  geometric consequence of steer angle + wheelbase + travel — never a directly
+  assigned heading. Do not "just rotate the car by steerAngle."
+- **Trailer is articulated geometry**: connected at a hitch; its motion depends
+  on the hitch angle, trailer length (hitch-to-axle), and trailer axle/wheel
+  positions. Forward driving lets the trailer settle in line; reversing can
+  swing it toward a **jackknife**, which is **clamped** (trailer never overlaps
+  or passes through the car) with no snapping/teleport/NaN.
+- **Geometry is EXPLICIT COORDINATES, scalars are DERIVED**: every vehicle
+  variant is authored as the (x, y) positions of its wheels, its body
+  width/length, and (cars) the (x, y) hitch position. Derive wheelbase `L`,
+  hitch offset `h`, trailer length `d`, track width, and the collision footprint
+  from those coordinates — never hand-enter a scalar `wheelbase`. The bicycle +
+  articulation equations are reused with the derived values, so the math is
+  correct for any variant.
+- **Variants are data, not code**: cars/trailers differ by geometry (length,
+  wheel positions, max steer angle, hitch position) in a validated catalog.
+  Adding a variant = adding data.
+- **One vehicle type, two roles**: a `Car` is `placed` (static) OR `drivable`
+  (player-controlled) — a runtime field, not a subclass. A `World` holds many
+  cars (one drivable + N placed). ANY car may tow 0 or 1 trailer (placed cars
+  included).
+- **Collision is our own, not an engine**: vehicle footprints are oriented boxes
+  (OBB); overlap via SAT + MTV (`src/engine/math/obb.ts`). The drivable rig (car
+  AND trailer) cannot penetrate placed cars or the boundary — resolve by
+  bisecting the sub-step to contact + MTV push-out (tunnelling-proof, sliding is
+  a bonus). Placed cars are immovable (no bounce/momentum/damage this milestone).
+- **Deterministic**: same input sequence + elapsed time → same motion AND same
+  collision outcome. Use a fixed timestep and injected `Clock`; keep `stepWorld`
+  pure so the model is unit-testable.
+
+## MOBILE-FIRST — NEVER forget this
+
+This game **must work well on phones**. This is a permanent, non-negotiable
+constraint on every feature, layout, and control decision — treat it as always
+in scope:
+
+- Responsive and fully usable from ~360px wide up to desktop, in **both portrait
+  and landscape**; no clipped controls, no horizontal page scroll.
+- Touch controls are first-class: on-screen forward/reverse buttons + a vertical
+  steering slider on the **right** edge (sets steer angle proportionally).
+  Support multi-touch (drive + steer at once).
+- Touch must not trigger page scroll, pinch-zoom, or text selection.
+- Large, thumb-reachable touch targets; smooth real-time motion on a mid-range
+  phone.
+- Always show a steering-angle indicator (steering-wheel/gauge UI) in addition
+  to the wheels drawn on the car, on both desktop and mobile.
+
+Desktop controls: Left/Right steer, Up = forward, Down = reverse.
+
+## Visual style — 100% straight-down top-down (NEVER angled)
+
+The game is a **pure orthographic overhead** 2D game, like classic top-down parking games
+(see the reference image). The camera looks **straight down** — **no tilt, no perspective,
+no isometric skew, no 3D/pseudo-3D**. It may pan (follow the rig) and zoom, but never
+rotates to an angled view. **All world sprites are flat overhead (roof-view) art**, rotated
+in-plane by heading; generate car/trailer sprites as pure top-down views, not 3/4 or angled.
+(The steering-wheel HUD indicator is exempt — it's a flat UI icon.)
 
 Tooling is **Vite** + **TypeScript** (strict) + **Vitest**. This is a plain TS
 project, not a React/CDF app.
