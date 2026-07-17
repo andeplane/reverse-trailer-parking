@@ -258,7 +258,8 @@ describe("determinism", () => {
 });
 
 describe("stability: no NaN/Infinity across a long varied script", () => {
-  it("stays finite through forward/steer/reverse/jackknife/brake", () => {
+  // Long simulated run — give it headroom on loaded machines (passes in <1s when idle).
+  it("stays finite through forward/steer/reverse/jackknife/brake", { timeout: 30_000 }, () => {
     const script: ControlInput[] = [
       { throttle: 1, steer: 0 },
       { throttle: 1, steer: 1 },

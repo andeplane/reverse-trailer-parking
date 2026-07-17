@@ -157,7 +157,8 @@ describe("stepWorld collision invariant (US4)", () => {
     drive(world, { throttle: -1, steer: 0 }, 600);
   });
 
-  it("stays finite and non-overlapping when wedged, steering hard in reverse into a wall", () => {
+  // Long simulated run — give it headroom on loaded machines (passes in <1s when idle).
+  it("stays finite and non-overlapping when wedged, steering hard in reverse into a wall", { timeout: 30_000 }, () => {
     const cars: CarSpawn[] = [
       {
         variantId: "sedan",

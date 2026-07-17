@@ -6,6 +6,7 @@ import type { Entity, Renderer } from "../../engine/render/renderer";
 import type { Vec2 } from "../../engine/math/vec2";
 import { allCarVariants, allTrailerVariants, createVariantCatalog } from "../vehicle/variants";
 import type { Level } from "../level/level-types";
+import { saveCustomLevel, type LevelStorage } from "../level/level-store";
 import { createApp } from "./app-shell";
 
 class FakeClock implements Clock {
@@ -45,7 +46,15 @@ function level(id: string): Level {
 let controlsRoot: HTMLElement | undefined;
 afterEach(() => controlsRoot?.remove());
 
-function makeApp() {
+function fakeStorage(): LevelStorage {
+  const store = new Map<string, string>();
+  return {
+    getItem: (k) => store.get(k) ?? null,
+    setItem: (k, v) => void store.set(k, v),
+  };
+}
+
+function makeApp(storage?: LevelStorage) {
   controlsRoot = document.createElement("div");
   document.body.appendChild(controlsRoot);
   const renderer = fakeRenderer();
@@ -56,6 +65,7 @@ function makeApp() {
     catalog,
     levels: [level("a"), level("b")],
     isTouch: false,
+    ...(storage ? { storage } : {}),
   });
   return { app, renderer, controlsRoot };
 }
@@ -99,5 +109,58 @@ describe("createApp", () => {
     expect(controlsRoot.querySelector(".editor-screen")).not.toBeNull();
     app.showMenu();
     expect(controlsRoot.querySelector(".editor-screen")).toBeNull();
+  });
+
+  it("merges custom levels from storage on top of bundled ones", () => {
+    const storage = fakeStorage();
+    saveCustomLevel({ ...level("a"), name: "a (custom)" }, storage);
+    saveCustomLevel(level("mine"), storage);
+    const { app, controlsRoot } = makeApp(storage);
+    app.showMenu();
+    const cards = [...controlsRoot.querySelectorAll(".menu-level-card")];
+    expect(cards).toHaveLength(3); // a (overridden), b, mine
+    expect(cards.find((c) => (c as HTMLElement).dataset.levelId === "a")?.textContent).toContain("a (custom)");
+  });
+
+  it("opens an existing level in the editor and deletes a custom level from the menu", () => {
+    const storage = fakeStorage();
+    saveCustomLevel(level("mine"), storage);
+    const { app, controlsRoot } = makeApp(storage);
+    app.showMenu();
+    (controlsRoot.querySelector(".menu-level-edit") as HTMLElement).click();
+    expect((controlsRoot.querySelector(".editor-name") as HTMLInputElement).value).toBe("a");
+
+    app.showMenu();
+    const confirmSpy = window.confirm;
+    window.confirm = () => true;
+    (controlsRoot.querySelector(".menu-level-delete") as HTMLElement).click();
+    window.confirm = confirmSpy;
+    expect(controlsRoot.querySelectorAll(".menu-level-card")).toHaveLength(2); // mine is gone
+  });
+
+  it("saving in the editor persists to storage and shows on the menu", () => {
+    const storage = fakeStorage();
+    const { app, controlsRoot } = makeApp(storage);
+    app.openEditor();
+    const name = controlsRoot.querySelector(".editor-name") as HTMLInputElement;
+    name.value = "Fresh";
+    name.dispatchEvent(new Event("input", { bubbles: true }));
+    (controlsRoot.querySelector(".editor-save") as HTMLElement).click();
+    app.showMenu();
+    const names = [...controlsRoot.querySelectorAll(".menu-level-card")].map((c) => c.textContent);
+    expect(names.some((n) => n?.includes("Fresh"))).toBe(true);
+  });
+
+  it("testing an editor draft returns to the editor (not the menu) with the draft intact", () => {
+    const { app, controlsRoot } = makeApp();
+    app.openEditor();
+    const name = controlsRoot.querySelector(".editor-name") as HTMLInputElement;
+    name.value = "Draft under test";
+    name.dispatchEvent(new Event("input", { bubbles: true }));
+    (controlsRoot.querySelector(".editor-test") as HTMLElement).click();
+    expect(controlsRoot.querySelector(".play-back-button")).not.toBeNull();
+    (controlsRoot.querySelector(".play-back-button") as HTMLElement).click();
+    expect(controlsRoot.querySelector(".editor-screen")).not.toBeNull();
+    expect((controlsRoot.querySelector(".editor-name") as HTMLInputElement).value).toBe("Draft under test");
   });
 });

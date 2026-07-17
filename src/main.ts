@@ -3,7 +3,6 @@ import { createPhaserRenderer } from "./engine/render/phaser-renderer";
 import { createPhaserSurface } from "./engine/render/create-phaser-surface";
 import { createVariantCatalog, allCarVariants, allTrailerVariants } from "./game/vehicle/variants";
 import { builtInLevels } from "./game/level/built-in-levels";
-import { loadCustomLevels, mergeLevels } from "./game/level/level-store";
 import { createApp } from "./game/screens/app-shell";
 
 // Ground/vehicle sprites. Bay lines + curbs are vector-drawn, so they need no textures
@@ -33,14 +32,13 @@ async function main(): Promise<void> {
   const surface = await createPhaserSurface({ parent: gameRoot, textures: WORLD_TEXTURES });
 
   const catalog = createVariantCatalog({ cars: allCarVariants, trailers: allTrailerVariants });
-  const levels = mergeLevels(builtInLevels(), loadCustomLevels(window.localStorage));
 
   const app = createApp({
     clock: performanceClock,
     renderer: createPhaserRenderer({ surface }),
     controlsRoot,
     catalog,
-    levels,
+    levels: builtInLevels(), // custom (editor) levels merge on top from storage
     storage: window.localStorage,
   });
   app.showMenu();
