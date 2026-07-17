@@ -154,7 +154,7 @@ describe("createEditorScreen", () => {
     expect(getSaved()?.placedCars).toHaveLength(1); // not two
   });
 
-  it("undoes the last change with Ctrl/Cmd+Z", () => {
+  it("undoes with Ctrl/Cmd+Z and redoes with Shift+Ctrl/Cmd+Z", () => {
     const { controlsRoot, getSaved } = mount({ x: 6, y: 3 });
     const cap = capture(controlsRoot);
     (controlsRoot.querySelector(".editor-car") as HTMLElement).click();
@@ -163,6 +163,18 @@ describe("createEditorScreen", () => {
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "z", ctrlKey: true }));
     save(controlsRoot);
     expect(getSaved()?.placedCars).toHaveLength(0);
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "z", ctrlKey: true, shiftKey: true }));
+    save(controlsRoot);
+    expect(getSaved()?.placedCars).toHaveLength(1); // redo brought the car back
+  });
+
+  it("re-fits the camera with the ⛶ button after zooming away", () => {
+    const { screen, controlsRoot, renderer } = mount();
+    screen.tick();
+    (controlsRoot.querySelectorAll(".editor-zoom")[0] as HTMLElement).click(); // zoom in
+    (controlsRoot.querySelector(".editor-fit") as HTMLElement).click();
+    screen.tick();
+    expect(renderer.camera).toBeGreaterThan(0); // camera updates flow through setCamera
   });
 
   it("rotates the car under the cursor with R in −30° steps (clockwise on screen)", () => {

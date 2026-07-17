@@ -143,9 +143,27 @@ export function createEditorScreen(args: {
   fitCamera();
 
   const undoStack: Level[] = [];
+  const redoStack: Level[] = [];
   function pushUndo(): void {
     undoStack.push(level);
     if (undoStack.length > 100) undoStack.shift();
+    redoStack.length = 0; // a new edit invalidates the redo history
+  }
+  function undo(): void {
+    const prev = undoStack.pop();
+    if (!prev) return;
+    redoStack.push(level);
+    level = prev;
+    selection = null;
+    syncTopbar();
+  }
+  function redo(): void {
+    const next = redoStack.pop();
+    if (!next) return;
+    undoStack.push(level);
+    level = next;
+    selection = null;
+    syncTopbar();
   }
 
   // Drag / hover state.
@@ -181,7 +199,7 @@ export function createEditorScreen(args: {
   topbar.className = "editor-topbar";
   const hints = document.createElement("div");
   hints.className = "editor-hints";
-  hints.textContent = "Q pick/copy · R rotate · ⌫ delete car · ⌘Z undo · Space-drag pan · wheel zoom";
+  hints.textContent = "Q pick/copy · R rotate · ⌫ delete car · ⌘Z undo · ⇧⌘Z redo · Space-drag pan · wheel zoom";
   root.append(capture, palette, topbar, hints);
   controlsRoot.appendChild(root);
 
@@ -333,6 +351,8 @@ export function createEditorScreen(args: {
   });
   topButton("＋", "editor-zoom", () => (camera.zoom *= 1.2));
   topButton("－", "editor-zoom", () => (camera.zoom /= 1.2));
+  const fitBtn = topButton("⛶", "editor-zoom editor-fit", () => fitCamera());
+  fitBtn.title = "Fit the whole map in view";
   topButton("Test ▸", "editor-test", () => onTest(level, savedJson));
 
   // Dirty tracking: leaving the editor must NEVER silently lose work. The baseline is the
@@ -514,12 +534,13 @@ export function createEditorScreen(args: {
     if (e.key === " ") spaceHeld = true;
     if ((e.metaKey || e.ctrlKey) && (e.key === "z" || e.key === "Z")) {
       e.preventDefault();
-      const prev = undoStack.pop();
-      if (prev) {
-        level = prev;
-        selection = null;
-        syncTopbar();
-      }
+      if (e.shiftKey) redo();
+      else undo();
+      return;
+    }
+    if ((e.metaKey || e.ctrlKey) && (e.key === "y" || e.key === "Y")) {
+      e.preventDefault();
+      redo();
       return;
     }
     if (e.key === "Escape") {
