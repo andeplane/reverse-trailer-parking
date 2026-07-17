@@ -16,27 +16,57 @@ Design/ADR: `specs/002-levels-editor/design.md`. The app is a **DOM screen state
 machine** in `src/game/screens/` (`AppShell`) over one shared Phaser surface —
 **not** Phaser Scenes (Phaser stays confined to `src/engine/render/`):
 
-- **Menu** (`menu-screen.ts`) lists levels + a Level-editor entry.
+- **Menu** (`menu-screen.ts`) lists levels; every level has an ✎ **edit** action
+  (editing a built-in saves a custom override), custom levels also get 🗑 delete
+  (behind a confirm) + a "custom" badge; "＋ New level" opens a blank editor.
 - **Play** (`play-screen.ts`) drives a level via the sandbox, detects the **win**
   (car AND trailer fully cross the exit's outward half-plane — `level/win.ts`),
   and shows a win overlay.
-- **Editor** (`editor-screen.ts`) builds maps intuitively: place cars (variant
-  cycle), drag-rect grass/curb areas, trees, and drag the exit (snaps to an edge);
-  Select-tool drags to move / empty-drag to pan; wheel zooms; Save persists to
-  localStorage; Test plays the draft.
+- **Editor** (`editor-screen.ts` + pure `editor-model.ts`) — see below.
+- The **app shell owns the bundled/custom split**: `createApp` takes bundled
+  levels + a `LevelStorage`; custom levels merge on top by id on every menu
+  show, so deleting a custom override resurrects the bundled original.
+  **Testing an editor draft returns to the editor** with the draft intact.
 
-**Levels are tile maps + data** (`src/game/level/`): a `Level` has a **`TileGrid`**
-(`tile-types.ts`: asphalt/grass/bay/curb/hedge/tree cells, each with a 0–3 rotation)
-plus cars and an exit. `levelToWorld()` derives the runtime `World` — solid tiles
-(curb/hedge/tree) → collidable `solids`, and it **opens a gap in the boundary for the
-exit** so the rig can reverse out. Tiles render from real sprites (`public/assets/tile-*.png`);
-canopy tiles (trees) draw above vehicles. Built-in levels are code (`built-in-levels.ts`);
-custom editor levels persist to localStorage. `World` carries `grid`, `solids`, `exit`,
-`bounds`. The editor is **tile-based** (`editor-screen.ts` + pure `editor-model.ts`): paint
-tiles by click/drag, a car-variant picker flyout, cars snap to cells and can't overlap,
-⟳/R rotate, ⌘Z undo, Esc cancel, Debug shows OBBs + field bounds. Camera/pointer glue leans
-on `Renderer.screenToWorld/setCamera`. **Renderer note:** `sync()` recreates a drawn item when
-its texture/style/size changes for an existing id (so repainted tiles update).
+**Levels are tile maps + edge curbs + data** (`src/game/level/`): a `Level` has a
+**`TileGrid`** (`tile-types.ts`: asphalt/grass/bay/bay-open/hedge/tree cells with 0–3
+rotation, **plus `hCurbs`/`vCurbs` boolean arrays — curbs live on the edges BETWEEN
+tiles, not as tiles**) plus cars and an exit. Key geometry helpers: `EdgeRef`,
+`nearestEdge` (with drag-direction bias), `edgeSegment`, `curbRuns` (merges
+consecutive edges into straight runs), `resizeGrid`, `bayMarkedSides`/`bayLineEdges`
+(a `bay` opens S at rot 0, turning CCW per rot step; adjacent bays share one line).
+`levelToWorld()` derives the runtime `World` — solid tiles (hedge/tree) → cell-sized
+`solids`, **curb runs → thin OBB strips**, and it **opens a gap in the boundary for
+the exit**. **Bay lines and curbs are vector-drawn** (`src/game/view/tile-decor.ts`:
+pill-ended strips so corners join smoothly) — only asphalt/grass/hedge/tree have
+sprite textures. A parking bay is 1 tile wide × 2 tiles deep (`bay` + `bay-open`) at
+2.5 m tiles so every car variant fits. Cars are positioned by **rear-axle reference**;
+use `rearAxleForBodyCentre` / `levelCarAtCentre` to place by visible body centre.
+Legacy saves with `curb`/`curb-corner` tiles migrate on parse (outline of edge curbs
+on asphalt). Built-in levels are code (`built-in-levels.ts`, `fallback-level.ts`);
+custom editor levels persist to localStorage.
+
+**Editor UX** (issues hardened by an agent-browser e2e pass): topbar has the level
+**name input** and **cols×rows map-size inputs** (resize keeps content glued,
+re-snaps the exit, drops outside cars). Tools: tile brushes, **Curb (edges)**
+(paint/erase the nearest edge; drag interpolates between samples and biases edge
+orientation to the drag direction), car picker flyout, exit gate, Select/Move.
+**Cars place continuously** (body centre at cursor, no snap; overlap is blocked with
+a red ghost). Keys: **R** rotates the hovered thing — cars in **−30° steps**
+(clockwise on screen), tiles a quarter turn; **Q** picks up whatever is hovered as
+the active tool (Factorio-style copy), Q again toggles Select/Move; **⌫** deletes
+the selected/hovered placed car (contextual 🗑 button appears too); ⌘Z undo; Esc
+cancel; Space/right-drag pans; wheel zooms. Save **validates** and toasts; a bottom
+hint bar lists shortcuts (hidden on touch). Typing in topbar inputs never triggers
+shortcuts. Camera/pointer glue leans on `Renderer.screenToWorld/setCamera`.
+**Renderer note:** `sync()` recreates a drawn item when its texture/style/size
+changes for an existing id (so repainted tiles update). **Debug-view note:** a rect
+entity's `length` runs along its rotation axis (+x at rotation 0) — the bounds rect
+is `{width: bounds.height, length: bounds.width}`.
+
+**Deploy:** GitHub Pages via `.github/workflows/deploy.yml` (push to `main` →
+test → `vite build --base=/reverse-trailer-parking/` → deploy). All runtime asset
+URLs must be `import.meta.env.BASE_URL`-aware — never hard-code `/assets/...`.
 
 **Debug mode** (`d` key): draws collision-OBB outlines AND writes the rig's exact
 state to the URL (`?dbg=<levelId>&x=..&y=..&h=..&v=..&s=..&t=..`) so a pasted URL
@@ -64,8 +94,9 @@ parking game (glossy cars, textured asphalt lot with bay lines + grass borders).
   sprites (`−θ` for +x-forward rects), plus the static lot background image and viewport RESIZE handling.
 - **Variant geometry is tuned to match its sprite's aspect ratio** so footprints line up with the art.
   Assets (committed by name in `public/assets/`): `car-{red,blue,green,orange,purple}.png`,
-  `trailer-{white,utility}.png`, `lot-background.png`, `steering-wheel.png` (HUD). The player is the
-  red sedan+caravan; placed cars use the other colours/variants. Regenerate via the `ai-image-generator`
+  `trailer-{white,utility}.png`, `tile-{asphalt,grass,hedge,tree}.png`, `steering-wheel.png` (HUD).
+  The player is the red sedan+caravan; placed cars use the other colours/variants. Bay lines and
+  curbs are vector-drawn (no sprites). Regenerate via the `ai-image-generator`
   skill (GPT Image 1.5, transparent, "top-down, straight overhead, no perspective/tilt"), then trim to
   opaque bounds.
 - Collision is our own OBB/SAT (`src/game/collision/collision-system.ts`): path-sampled
