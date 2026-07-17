@@ -152,7 +152,20 @@ export function createEditorScreen(args: {
   let lastClient: { x: number; y: number } | null = null;
   let spaceHeld = false;
   let hover: Vec2 | null = null; // latest cursor world position, for the placement preview
+  let lastBrushPoint: Vec2 | null = null; // previous drag sample, for interpolation
   const painted = new Set<string>();
+
+  /** Applies a brush at every point along the segment from the previous drag sample (fast drags skip cells). */
+  function brushAlongDrag(p: Vec2, apply: (q: Vec2) => void): void {
+    const from = lastBrushPoint ?? p;
+    lastBrushPoint = p;
+    const dist = length(sub(p, from));
+    const step = level.grid.tileSize / 2;
+    const steps = Math.max(1, Math.ceil(dist / step));
+    for (let i = 1; i <= steps; i++) {
+      apply({ x: from.x + ((p.x - from.x) * i) / steps, y: from.y + ((p.y - from.y) * i) / steps });
+    }
+  }
 
   // --- DOM ---------------------------------------------------------------
   const root = document.createElement("div");
@@ -231,6 +244,7 @@ export function createEditorScreen(args: {
     chip.addEventListener("click", () => {
       setCarVariant(i);
       setTool({ kind: "car" }, carBtn);
+      carFlyout.classList.remove("open"); // picking a variant closes the flyout
     });
     carFlyout.appendChild(chip);
   });
@@ -342,8 +356,8 @@ export function createEditorScreen(args: {
     level = { ...level, grid: withTile(level.grid, cell.col, cell.row, { type: tool.tile, rot: brushRot }) };
   }
 
-  function paintCurb(p: Vec2): void {
-    const edge = nearestEdge(level.grid, p);
+  function paintCurb(p: Vec2, prefer?: "h" | "v"): void {
+    const edge = nearestEdge(level.grid, p, prefer);
     if (!edge) return;
     const key = `${edge.o}:${edge.col}:${edge.row}`;
     if (painted.has(key)) return;
@@ -358,6 +372,7 @@ export function createEditorScreen(args: {
     dragStart = p;
     lastClient = { x: pe.clientX, y: pe.clientY };
     painted.clear();
+    lastBrushPoint = p;
 
     if (spaceHeld || pe.button === 1 || pe.button === 2) {
       dragMode = "pan";
@@ -390,9 +405,14 @@ export function createEditorScreen(args: {
       camera.center = { x: camera.center.x - dx, y: camera.center.y + dy };
       lastClient = { x: pe.clientX, y: pe.clientY };
     } else if (dragMode === "paint") {
-      paintCell(hover);
+      brushAlongDrag(hover, paintCell);
     } else if (dragMode === "curb") {
-      paintCurb(hover);
+      // Bias edge choice to the drag direction so brushing along a line never drops perpendicular stubs.
+      const from = lastBrushPoint ?? hover;
+      const dx = Math.abs(hover.x - from.x);
+      const dy = Math.abs(hover.y - from.y);
+      const prefer = dx > 2 * dy ? "h" : dy > 2 * dx ? "v" : undefined;
+      brushAlongDrag(hover, (q) => paintCurb(q, prefer));
     } else if (dragMode === "move" && selection && dragStart) {
       moveSelection({ x: hover.x - dragStart.x, y: hover.y - dragStart.y });
       dragStart = hover;
@@ -615,11 +635,6 @@ export function createEditorScreen(args: {
           visual: { kind: "sprite", texture: tileGroundTexture(tool.tile) },
         },
       ];
-      // Bay tiles preview their painted lines so the rotation is obvious before placing.
-      bayMarkedSides(tool.tile, brushRot).forEach((side, i) => {
-        const { a, b } = edgeSegment(level.grid, sideEdge(cell.col, cell.row, side));
-        out.push(stripEntity(`editor:preview:line:${i}`, a, b, BAY_LINE_WIDTH, 0xe9e9e6, 0.92));
-      });
       if (tool.tile === "tree") {
         out.push({
           id: "editor:preview:canopy",
@@ -630,6 +645,11 @@ export function createEditorScreen(args: {
         });
       }
       out.push(outlineEntity("editor:preview:box", center, 0 as Radians, size, size, 0x39ff14));
+      // Bay tiles preview their painted lines ON TOP of the outline so the opening side reads clearly.
+      bayMarkedSides(tool.tile, brushRot).forEach((side, i) => {
+        const { a, b } = edgeSegment(level.grid, sideEdge(cell.col, cell.row, side));
+        out.push(stripEntity(`editor:preview:line:${i}`, a, b, BAY_LINE_WIDTH, 0xffffff, 1));
+      });
       return out;
     }
     if (tool.kind === "curb") {

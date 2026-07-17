@@ -290,6 +290,8 @@
         border-radius: 12px;
         background: rgba(20, 23, 28, 0.82);
         pointer-events: auto;
+        max-height: calc(100vh - 24px);
+        overflow-y: auto;
       }
       .editor-tool,
       .editor-cycle {
@@ -313,11 +315,15 @@
         left: 50%;
         transform: translateX(-50%);
         display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        align-items: center;
         gap: 6px;
         padding: 6px;
         border-radius: 12px;
         background: rgba(20, 23, 28, 0.82);
         pointer-events: auto;
+        max-width: calc(100vw - 12px);
       }
       .editor-topbar button {
         padding: 8px 14px;
@@ -406,6 +412,13 @@
         font: 500 12px system-ui, sans-serif;
         pointer-events: none;
         white-space: nowrap;
+        max-width: calc(100vw - 24px);
+      }
+      /* Keyboard shortcuts are meaningless on touch devices. */
+      @media (pointer: coarse) {
+        .editor-hints {
+          display: none;
+        }
       }
       .editor-delete {
         position: absolute;

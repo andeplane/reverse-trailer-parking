@@ -151,8 +151,12 @@ export function edgeSegment(grid: TileGrid, e: EdgeRef): { a: Vec2; b: Vec2 } {
   return { a: cornerAt(grid, e.col, e.row), b: cornerAt(grid, e.col, e.row + 1) };
 }
 
-/** The cell edge nearest a world point, or null if the point is off the grid (with a small margin). */
-export function nearestEdge(grid: TileGrid, p: Vec2): EdgeRef | null {
+/**
+ * The cell edge nearest a world point, or null if the point is off the grid (with a small margin).
+ * `prefer` biases the choice to one orientation (used while dragging along an edge, so brushing
+ * a horizontal line never drops perpendicular stubs when a sample grazes a column line).
+ */
+export function nearestEdge(grid: TileGrid, p: Vec2, prefer?: "h" | "v"): EdgeRef | null {
   const w = gridWidth(grid);
   const h = gridHeight(grid);
   const margin = grid.tileSize / 2;
@@ -173,6 +177,8 @@ export function nearestEdge(grid: TileGrid, p: Vec2): EdgeRef | null {
   };
   const hDist = Math.abs(fy - hEdge.row);
   const vDist = Math.abs(fx - vEdge.col);
+  if (prefer === "h" && hDist < 0.5) return hEdge;
+  if (prefer === "v" && vDist < 0.5) return vEdge;
   return hDist <= vDist ? hEdge : vEdge;
 }
 
