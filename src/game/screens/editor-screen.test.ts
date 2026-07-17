@@ -9,18 +9,20 @@ import { createEditorScreen } from "./editor-screen";
 
 const catalog = createVariantCatalog({ cars: allCarVariants, trailers: allTrailerVariants });
 
-function fakeRenderer(worldPoint: Vec2): Renderer & { syncs: number; camera: number; last: Entity[] } {
+function fakeRenderer(worldPoint: Vec2): Renderer & { syncs: number; camera: number; lastZoom: number; last: Entity[] } {
   const r = {
     syncs: 0,
     camera: 0,
+    lastZoom: 0,
     last: [] as Entity[],
     sync: (e: Entity[]) => {
       r.syncs += 1;
       r.last = e;
     },
     follow: () => {},
-    setCamera: () => {
+    setCamera: (_c: Vec2, zoom: number) => {
       r.camera += 1;
+      r.lastZoom = zoom;
     },
     screenToWorld: () => worldPoint,
     worldToScreen: () => ({ x: 0, y: 0 }),
@@ -242,7 +244,7 @@ describe("createEditorScreen", () => {
     expect((controlsRoot.querySelector('[data-tile="hedge"]') as HTMLElement).classList.contains("active")).toBe(true);
   });
 
-  it("deletes the selected car with ⌫ and shows the contextual delete button", () => {
+  it("deletes the selected car with ⌫ and shows the contextual selection toolbar", () => {
     const { screen, controlsRoot, getSaved } = mount({ x: 6, y: 3 });
     const cap = capture(controlsRoot);
     (controlsRoot.querySelector(".editor-car") as HTMLElement).click();
@@ -253,10 +255,47 @@ describe("createEditorScreen", () => {
     cap.dispatchEvent(pointer("pointerdown")); // select the car under the cursor
     cap.dispatchEvent(pointer("pointerup"));
     screen.tick();
-    expect((controlsRoot.querySelector(".editor-delete") as HTMLElement).classList.contains("visible")).toBe(true);
+    expect((controlsRoot.querySelector(".editor-selection-bar") as HTMLElement).classList.contains("visible")).toBe(true);
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace" }));
     save(controlsRoot);
     expect(getSaved()?.placedCars).toHaveLength(0);
+  });
+
+  it("rotates the selection from the toolbar buttons (touch-friendly)", () => {
+    const { controlsRoot, getSaved } = mount({ x: 6, y: 3 });
+    const cap = capture(controlsRoot);
+    (controlsRoot.querySelector(".editor-car") as HTMLElement).click();
+    cap.dispatchEvent(pointer("pointerdown"));
+    cap.dispatchEvent(pointer("pointerup"));
+    const selectBtn = [...controlsRoot.querySelectorAll(".editor-tool")].find((b) => b.textContent === "Select / Move") as HTMLElement;
+    selectBtn.click();
+    cap.dispatchEvent(pointer("pointerdown"));
+    cap.dispatchEvent(pointer("pointerup"));
+    (controlsRoot.querySelector(".editor-rotate-cw") as HTMLElement).click();
+    save(controlsRoot);
+    expect(getSaved()?.placedCars[0]?.heading).toBeCloseTo(-Math.PI / 6);
+  });
+
+  it("pinch with two pointers zooms the camera instead of painting", () => {
+    const { screen, controlsRoot, renderer, getSaved } = mount({ x: 0, y: 0 });
+    (controlsRoot.querySelector('[data-tile="grass"]') as HTMLElement).click();
+    const cap = capture(controlsRoot);
+    const touch = (type: string, id: number, x: number, y: number): void => {
+      const e = new MouseEvent(type, { clientX: x, clientY: y, bubbles: true, cancelable: true });
+      Object.defineProperty(e, "pointerId", { value: id });
+      cap.dispatchEvent(e);
+    };
+    screen.tick();
+    const zoomBefore = renderer.lastZoom;
+    touch("pointerdown", 1, 100, 100);
+    touch("pointerdown", 2, 200, 100); // second finger → pinch, not paint
+    touch("pointermove", 2, 300, 100); // spread fingers → zoom in
+    screen.tick();
+    expect(renderer.lastZoom).toBeCloseTo(zoomBefore * 2); // distance doubled
+    touch("pointerup", 2, 300, 100);
+    touch("pointerup", 1, 100, 100);
+    save(controlsRoot);
+    expect(getSaved()?.placedCars ?? []).toHaveLength(0); // lifting after a pinch places nothing
   });
 
   it("shows a save toast and refuses to save an invalid level", () => {

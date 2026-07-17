@@ -490,23 +490,36 @@
           display: none;
         }
       }
-      .editor-delete {
+      .editor-selection-bar {
         position: absolute;
         bottom: 42px;
         left: 50%;
         transform: translateX(-50%);
         display: none;
-        padding: 9px 16px;
-        border: 2px solid rgba(255, 120, 110, 0.5);
-        border-radius: 10px;
-        background: rgba(120, 34, 28, 0.92);
-        color: #fff;
-        font: 600 13px system-ui, sans-serif;
-        cursor: pointer;
+        gap: 8px;
+        padding: 6px;
+        border-radius: 12px;
+        background: rgba(20, 23, 28, 0.82);
         pointer-events: auto;
       }
-      .editor-delete.visible {
-        display: block;
+      .editor-selection-bar.visible {
+        display: flex;
+      }
+      .editor-selection-bar button {
+        min-width: 44px;
+        min-height: 40px;
+        padding: 6px 12px;
+        border: 2px solid rgba(255, 255, 255, 0.2);
+        border-radius: 10px;
+        background: rgba(50, 55, 62, 0.95);
+        color: #fff;
+        font: 600 16px system-ui, sans-serif;
+        cursor: pointer;
+      }
+      .editor-selection-bar .editor-delete {
+        border-color: rgba(255, 120, 110, 0.5);
+        background: rgba(120, 34, 28, 0.92);
+        font-size: 13px;
       }
       .editor-toast {
         position: absolute;

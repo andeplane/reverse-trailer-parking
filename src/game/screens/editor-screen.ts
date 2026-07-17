@@ -171,7 +171,11 @@ export function createEditorScreen(args: {
 
   // Drag / hover state.
   let dragStart: Vec2 | null = null;
-  let dragMode: "none" | "pan" | "paint" | "curb" | "move" | "rect" = "none";
+  let dragMode: "none" | "pan" | "paint" | "curb" | "move" | "rect" | "pinch" = "none";
+  // Touch: two active pointers pinch-zoom/pan the canvas.
+  const activePointers = new Map<number, { x: number; y: number }>();
+  let pinchLast: { dist: number; mid: { x: number; y: number } } | null = null;
+  let suppressTap = false; // lifting the fingers after a pinch must not place anything
   let curbValue = true; // whether the current curb drag paints or erases
   let lastClient: { x: number; y: number } | null = null;
   let spaceHeld = false;
@@ -280,13 +284,29 @@ export function createEditorScreen(args: {
   toolEls.push(selectBtn);
   markActive(toolEls[1]!); // grass brush active by default
 
-  // Contextual delete button — appears when a placed car is selected.
-  const deleteBtn = document.createElement("button");
-  deleteBtn.type = "button";
-  deleteBtn.className = "editor-delete";
-  deleteBtn.textContent = "🗑 Delete car (⌫)";
-  deleteBtn.addEventListener("click", () => deleteSelection());
-  root.appendChild(deleteBtn);
+  // Contextual selection toolbar — rotate/delete without a keyboard (touch-friendly).
+  const selectionBar = document.createElement("div");
+  selectionBar.className = "editor-selection-bar";
+  function selectionButton(label: string, className: string, title: string, onClick: () => void): HTMLButtonElement {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = className;
+    b.textContent = label;
+    b.title = title;
+    b.addEventListener("click", onClick);
+    selectionBar.appendChild(b);
+    return b;
+  }
+  selectionButton("⟲", "editor-rotate-ccw", "Rotate 30° counter-clockwise", () => {
+    pushUndo();
+    rotateSelection((Math.PI / 6) as Radians);
+  });
+  selectionButton("⟳", "editor-rotate-cw", "Rotate 30° clockwise (R)", () => {
+    pushUndo();
+    rotateSelection(CAR_ROTATE_STEP);
+  });
+  const deleteBtn = selectionButton("🗑 Delete", "editor-delete", "Delete this car (⌫)", () => deleteSelection());
+  root.appendChild(selectionBar);
 
   // --- Topbar ------------------------------------------------------------
   const nameInput = document.createElement("input");
@@ -454,9 +474,26 @@ export function createEditorScreen(args: {
     level = { ...level, grid: withCurb(level.grid, edge, curbValue) };
   }
 
+  function pinchState(): { dist: number; mid: { x: number; y: number } } | null {
+    if (activePointers.size < 2) return null;
+    const [a, b] = [...activePointers.values()];
+    return {
+      dist: Math.max(Math.hypot(b!.x - a!.x, b!.y - a!.y), 1),
+      mid: { x: (a!.x + b!.x) / 2, y: (a!.y + b!.y) / 2 },
+    };
+  }
+
   function onPointerDown(e: Event): void {
     const pe = e as PointerEvent;
     pe.preventDefault();
+    activePointers.set(pe.pointerId, { x: pe.clientX, y: pe.clientY });
+    suppressTap = false;
+    if (activePointers.size >= 2) {
+      // Second finger down: whatever drag was in progress becomes a pinch zoom/pan.
+      dragMode = "pinch";
+      pinchLast = pinchState();
+      return;
+    }
     const p = worldAt(pe.clientX, pe.clientY);
     dragStart = p;
     lastClient = { x: pe.clientX, y: pe.clientY };
@@ -487,6 +524,18 @@ export function createEditorScreen(args: {
 
   function onPointerMove(e: Event): void {
     const pe = e as PointerEvent;
+    if (activePointers.has(pe.pointerId)) activePointers.set(pe.pointerId, { x: pe.clientX, y: pe.clientY });
+    if (dragMode === "pinch") {
+      const now = pinchState();
+      if (now && pinchLast) {
+        camera.zoom = Math.min(8, Math.max(0.1, camera.zoom * (now.dist / pinchLast.dist)));
+        const dx = (now.mid.x - pinchLast.mid.x) / (PIXELS_PER_METRE * camera.zoom);
+        const dy = (now.mid.y - pinchLast.mid.y) / (PIXELS_PER_METRE * camera.zoom);
+        camera.center = { x: camera.center.x - dx, y: camera.center.y + dy };
+        pinchLast = now;
+      }
+      return;
+    }
     hover = worldAt(pe.clientX, pe.clientY);
     if (dragMode === "pan" && lastClient) {
       const dx = (pe.clientX - lastClient.x) / (PIXELS_PER_METRE * camera.zoom);
@@ -510,10 +559,19 @@ export function createEditorScreen(args: {
 
   function onPointerUp(e: Event): void {
     const pe = e as PointerEvent;
+    activePointers.delete(pe.pointerId);
+    if (dragMode === "pinch") {
+      if (activePointers.size < 2) {
+        dragMode = "none";
+        pinchLast = null;
+        suppressTap = true; // don't treat the finger lift as a tap/placement
+      }
+      return;
+    }
     const p = worldAt(pe.clientX, pe.clientY);
     const start = dragStart ?? p;
 
-    if (dragMode === "none" && tool.kind === "car") placeCar(p);
+    if (dragMode === "none" && !suppressTap && tool.kind === "car") placeCar(p);
     else if (tool.kind === "exit" && dragMode === "rect") {
       pushUndo();
       // A drag sets a custom-width gate; a click drops a standard-width gate at the nearest edge.
@@ -579,9 +637,18 @@ export function createEditorScreen(args: {
     if (e.key === " ") spaceHeld = false;
   }
 
+  function onPointerCancel(e: Event): void {
+    activePointers.delete((e as PointerEvent).pointerId);
+    if (activePointers.size < 2 && dragMode === "pinch") {
+      dragMode = "none";
+      pinchLast = null;
+    }
+  }
+
   capture.addEventListener("pointerdown", onPointerDown);
   capture.addEventListener("pointermove", onPointerMove);
   capture.addEventListener("pointerup", onPointerUp);
+  capture.addEventListener("pointercancel", onPointerCancel);
   capture.addEventListener("wheel", onWheel, { passive: false });
   capture.addEventListener("contextmenu", onContextMenu);
   window.addEventListener("keydown", onKeyDown);
@@ -855,7 +922,8 @@ export function createEditorScreen(args: {
       const top: Entity[] = [];
       if (debug) top.push(...worldToDebugEntities(world, catalog));
       if (selection) top.push(selectionEntity(level, selection, catalog));
-      deleteBtn.classList.toggle("visible", selection?.kind === "placed");
+      selectionBar.classList.toggle("visible", selection !== null);
+      deleteBtn.style.display = selection?.kind === "placed" ? "" : "none"; // the rig can't be deleted
       renderer.sync([
         ...layers.ground,
         ...preview.ground,
