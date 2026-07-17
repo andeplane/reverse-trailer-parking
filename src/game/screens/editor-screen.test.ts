@@ -291,6 +291,72 @@ describe("createEditorScreen", () => {
     expect(second.getSaved()?.id).toBe(first.id);
   });
 
+  it("exits straight to the menu when there are no unsaved changes", () => {
+    const { controlsRoot, getMenu } = mount();
+    (controlsRoot.querySelector(".editor-menu") as HTMLElement).click();
+    expect(getMenu()).toBe(1);
+  });
+
+  it("guards unsaved changes behind an in-app Save/Discard/Cancel dialog (no native popups)", () => {
+    const { controlsRoot, getMenu, getSaved } = mount({ x: 0, y: 0 });
+    (controlsRoot.querySelector('[data-tile="grass"]') as HTMLElement).click();
+    const cap = capture(controlsRoot);
+    cap.dispatchEvent(pointer("pointerdown"));
+    cap.dispatchEvent(pointer("pointerup"));
+
+    const menuBtn = controlsRoot.querySelector(".editor-menu") as HTMLElement;
+    menuBtn.click();
+    expect(getMenu()).toBe(0); // did NOT exit
+    const dialog = controlsRoot.querySelector(".editor-exit-dialog") as HTMLElement;
+    expect(dialog.classList.contains("open")).toBe(true);
+
+    (controlsRoot.querySelector(".editor-exit-cancel") as HTMLElement).click();
+    expect(dialog.classList.contains("open")).toBe(false);
+    expect(getMenu()).toBe(0); // cancel keeps editing
+
+    menuBtn.click();
+    (controlsRoot.querySelector(".editor-exit-save") as HTMLElement).click();
+    expect(getSaved()).toBeDefined(); // saved on the way out
+    expect(getMenu()).toBe(1);
+  });
+
+  it("can discard unsaved changes from the exit dialog", () => {
+    const { controlsRoot, getMenu, getSaved } = mount({ x: 0, y: 0 });
+    (controlsRoot.querySelector('[data-tile="grass"]') as HTMLElement).click();
+    const cap = capture(controlsRoot);
+    cap.dispatchEvent(pointer("pointerdown"));
+    cap.dispatchEvent(pointer("pointerup"));
+    (controlsRoot.querySelector(".editor-menu") as HTMLElement).click();
+    (controlsRoot.querySelector(".editor-exit-discard") as HTMLElement).click();
+    expect(getMenu()).toBe(1);
+    expect(getSaved()).toBeUndefined(); // nothing was saved
+  });
+
+  it("no longer prompts after saving (save clears the dirty state)", () => {
+    const { controlsRoot, getMenu } = mount({ x: 0, y: 0 });
+    (controlsRoot.querySelector('[data-tile="grass"]') as HTMLElement).click();
+    const cap = capture(controlsRoot);
+    cap.dispatchEvent(pointer("pointerdown"));
+    cap.dispatchEvent(pointer("pointerup"));
+    save(controlsRoot);
+    (controlsRoot.querySelector(".editor-menu") as HTMLElement).click();
+    expect(getMenu()).toBe(1); // straight out, no dialog
+  });
+
+  it("renders the tile placement ghost below vehicles (at its real layer)", () => {
+    // Hover the drivable rig's cell: the ghost tile must not cover the car sprite.
+    const { screen, controlsRoot, renderer } = mount({ x: -20, y: 0 });
+    (controlsRoot.querySelector('[data-tile="grass"]') as HTMLElement).click();
+    capture(controlsRoot).dispatchEvent(pointer("pointermove"));
+    screen.tick();
+    const ids = renderer.last.map((e) => e.id);
+    const ghost = ids.indexOf("editor:preview:tile");
+    const car = ids.indexOf("car:0");
+    const firstTile = ids.findIndex((id) => id.startsWith("tile:"));
+    expect(ghost).toBeGreaterThan(firstTile); // above existing tiles so it is visible
+    expect(ghost).toBeLessThan(car); // but below vehicles, like a real tile
+  });
+
   it("removes its DOM on dispose", () => {
     const { screen, controlsRoot } = mount();
     screen.dispose();

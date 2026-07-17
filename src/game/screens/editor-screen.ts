@@ -31,7 +31,7 @@ import {
   type TileType,
 } from "../level/tile-types";
 import { BAY_LINE_WIDTH, tileGroundTexture } from "../view/tile-decor";
-import { worldToEntities } from "../view/world-view";
+import { worldToLayers } from "../view/world-view";
 import { worldToDebugEntities } from "../view/debug-view";
 import { allCarVariants } from "../vehicle/variants";
 import { findCarVariant, type VariantCatalog } from "../vehicle/vehicle-types";
@@ -330,17 +330,71 @@ export function createEditorScreen(args: {
   topButton("＋", "editor-zoom", () => (camera.zoom *= 1.2));
   topButton("－", "editor-zoom", () => (camera.zoom /= 1.2));
   topButton("Test ▸", "editor-test", () => onTest(level));
-  topButton("Save", "editor-save", () => {
+
+  // Dirty tracking: leaving the editor must NEVER silently lose work.
+  let savedJson = JSON.stringify(level);
+  function isDirty(): boolean {
+    return JSON.stringify(level) !== savedJson;
+  }
+  function trySave(): boolean {
     try {
       validateLevel(level, catalog);
     } catch (error) {
       toast(error instanceof Error ? error.message : String(error), true);
-      return;
+      return false;
     }
     onSave(level);
+    savedJson = JSON.stringify(level);
     toast(`Saved “${level.name}” ✓`);
+    return true;
+  }
+  topButton("Save", "editor-save", () => void trySave());
+  topButton("☰ Menu", "editor-menu", () => {
+    if (isDirty()) showExitDialog();
+    else onExitToMenu();
   });
-  topButton("☰ Menu", "editor-menu", () => onExitToMenu());
+
+  // In-app unsaved-changes dialog (never a native browser popup).
+  const exitDialog = document.createElement("div");
+  exitDialog.className = "editor-exit-dialog";
+  const exitPanel = document.createElement("div");
+  exitPanel.className = "editor-exit-panel";
+  const exitMessage = document.createElement("p");
+  exitPanel.appendChild(exitMessage);
+  const exitButtons = document.createElement("div");
+  exitButtons.className = "editor-exit-buttons";
+  function exitDialogButton(label: string, className: string, onClick: () => void): void {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = className;
+    b.textContent = label;
+    b.addEventListener("click", onClick);
+    exitButtons.appendChild(b);
+  }
+  exitDialogButton("Save & exit", "editor-exit-save", () => {
+    if (trySave()) {
+      hideExitDialog();
+      onExitToMenu();
+    }
+  });
+  exitDialogButton("Discard changes", "editor-exit-discard", () => {
+    hideExitDialog();
+    onExitToMenu();
+  });
+  exitDialogButton("Cancel", "editor-exit-cancel", () => hideExitDialog());
+  exitPanel.appendChild(exitButtons);
+  exitDialog.appendChild(exitPanel);
+  exitDialog.addEventListener("click", (e) => {
+    if (e.target === exitDialog) hideExitDialog(); // clicking the backdrop cancels
+  });
+  root.appendChild(exitDialog);
+  function showExitDialog(): void {
+    exitMessage.textContent = `Save changes to “${level.name || "this level"}”?`;
+    exitDialog.classList.add("open");
+  }
+  function hideExitDialog(): void {
+    exitDialog.classList.remove("open");
+  }
 
   // --- Pointer handling --------------------------------------------------
   function worldAt(clientX: number, clientY: number): Vec2 {
@@ -464,6 +518,10 @@ export function createEditorScreen(args: {
       return;
     }
     if (e.key === "Escape") {
+      if (exitDialog.classList.contains("open")) {
+        hideExitDialog();
+        return;
+      }
       selection = null;
       dragMode = "none";
       carFlyout.classList.remove("open");
@@ -618,15 +676,25 @@ export function createEditorScreen(args: {
     return tool.kind === "paint" && tool.tile === pick.tile && brushRot === pick.rot;
   }
 
-  /** A ghost of what the current tool will place at the cursor, outlined green (valid) / red. */
-  function previewEntities(): Entity[] {
-    if (!hover || (dragMode !== "none" && dragMode !== "paint" && dragMode !== "curb")) return [];
+  /**
+   * A ghost of what the current tool will place at the cursor, outlined green (valid) / red.
+   * Ghosts are slotted at the depth their real entity will occupy: a tile ghost sits above the
+   * existing tiles but BELOW vehicles, a car ghost at vehicle depth, indicators on top of all.
+   */
+  interface PreviewLayers {
+    ground: Entity[];
+    vehicles: Entity[];
+    overlay: Entity[];
+  }
+  function previewEntities(): PreviewLayers {
+    const none: PreviewLayers = { ground: [], vehicles: [], overlay: [] };
+    if (!hover || (dragMode !== "none" && dragMode !== "paint" && dragMode !== "curb")) return none;
     if (tool.kind === "paint") {
       const cell = worldToCell(level.grid, hover);
-      if (!cell) return [];
+      if (!cell) return none;
       const center = cellCenter(level.grid, cell.col, cell.row);
       const size = level.grid.tileSize as Metres;
-      const out: Entity[] = [
+      const ground: Entity[] = [
         {
           id: "editor:preview:tile",
           position: center,
@@ -635,8 +703,10 @@ export function createEditorScreen(args: {
           visual: { kind: "sprite", texture: tileGroundTexture(tool.tile) },
         },
       ];
+      const overlay: Entity[] = [];
       if (tool.tile === "tree") {
-        out.push({
+        // Canopy draws above vehicles when placed, so its ghost does too.
+        overlay.push({
           id: "editor:preview:canopy",
           position: center,
           rotation: 0 as Radians,
@@ -644,69 +714,88 @@ export function createEditorScreen(args: {
           visual: { kind: "sprite", texture: "tile-tree" },
         });
       }
-      out.push(outlineEntity("editor:preview:box", center, 0 as Radians, size, size, 0x39ff14));
-      // Bay tiles preview their painted lines ON TOP of the outline so the opening side reads clearly.
+      overlay.push(outlineEntity("editor:preview:box", center, 0 as Radians, size, size, 0x39ff14));
+      // Bay tiles preview their painted lines on top of the outline so the opening side reads clearly.
       bayMarkedSides(tool.tile, brushRot).forEach((side, i) => {
         const { a, b } = edgeSegment(level.grid, sideEdge(cell.col, cell.row, side));
-        out.push(stripEntity(`editor:preview:line:${i}`, a, b, BAY_LINE_WIDTH, 0xffffff, 1));
+        overlay.push(stripEntity(`editor:preview:line:${i}`, a, b, BAY_LINE_WIDTH, 0xffffff, 1));
       });
-      return out;
+      return { ground, vehicles: [], overlay };
     }
     if (tool.kind === "curb") {
       const edge = nearestEdge(level.grid, hover);
-      if (!edge) return [];
+      if (!edge) return none;
       const { a, b } = edgeSegment(level.grid, edge);
       const erases = dragMode === "curb" ? !curbValue : curbAt(level.grid, edge);
-      return [stripEntity("editor:preview:curb", a, b, CURB_THICKNESS as Metres, erases ? 0xff3b30 : 0x39ff14, 0.6)];
+      return {
+        ...none,
+        overlay: [stripEntity("editor:preview:curb", a, b, CURB_THICKNESS as Metres, erases ? 0xff3b30 : 0x39ff14, 0.6)],
+      };
     }
     if (tool.kind === "car") {
       const candidate = carBrushCandidate(hover);
       const obb = levelCarObb(candidate, catalog);
       const ok = !carOverlaps(level, candidate, catalog);
       const variant = findCarVariant(catalog, candidate.variantId);
-      return [
-        {
-          id: "editor:preview:car",
-          position: obb.center,
-          rotation: obb.rotation,
-          size: { width: variant.bodyWidth, length: variant.bodyLength },
-          visual: { kind: "sprite", texture: variant.texture },
-        },
-        outlineEntity("editor:preview:box", obb.center, obb.rotation, (obb.halfW * 2) as Metres, (obb.halfL * 2) as Metres, ok ? 0x39ff14 : 0xff3b30),
-      ];
+      return {
+        ground: [],
+        vehicles: [
+          {
+            id: "editor:preview:car",
+            position: obb.center,
+            rotation: obb.rotation,
+            size: { width: variant.bodyWidth, length: variant.bodyLength },
+            visual: { kind: "sprite", texture: variant.texture },
+          },
+        ],
+        overlay: [
+          outlineEntity("editor:preview:box", obb.center, obb.rotation, (obb.halfW * 2) as Metres, (obb.halfL * 2) as Metres, ok ? 0x39ff14 : 0xff3b30),
+        ],
+      };
     }
     if (tool.kind === "exit") {
       const gate = exitGateAt(hover, level.grid);
       const seg = sub(gate.b, gate.a);
       const len = Math.max(length(seg), 0.1) as Metres;
       const mid = { x: (gate.a.x + gate.b.x) / 2, y: (gate.a.y + gate.b.y) / 2 };
-      return [
-        {
-          id: "editor:preview:exit",
-          position: mid,
-          rotation: Math.atan2(seg.y, seg.x) as Radians,
-          size: { width: 0.7 as Metres, length: len },
-          visual: {
-            kind: "rect",
-            style: { fillColor: 0xffd23f, fillAlpha: 0.55, strokeColor: 0x39ff14, strokeWidth: 0.16 as Metres, cornerRadius: 0.1 as Metres },
+      return {
+        ...none,
+        overlay: [
+          {
+            id: "editor:preview:exit",
+            position: mid,
+            rotation: Math.atan2(seg.y, seg.x) as Radians,
+            size: { width: 0.7 as Metres, length: len },
+            visual: {
+              kind: "rect",
+              style: { fillColor: 0xffd23f, fillAlpha: 0.55, strokeColor: 0x39ff14, strokeWidth: 0.16 as Metres, cornerRadius: 0.1 as Metres },
+            },
           },
-        },
-      ];
+        ],
+      };
     }
-    return [];
+    return none;
   }
 
   return {
     tick(): void {
       renderer.setCamera(camera.center, camera.zoom);
       const world = levelToWorld(level, catalog);
-      const entities = worldToEntities(world, catalog);
-      const extra: Entity[] = [];
-      if (debug) extra.push(...worldToDebugEntities(world, catalog));
-      if (selection) extra.push(selectionEntity(level, selection, catalog));
-      extra.push(...previewEntities());
+      const layers = worldToLayers(world, catalog);
+      const preview = previewEntities();
+      const top: Entity[] = [];
+      if (debug) top.push(...worldToDebugEntities(world, catalog));
+      if (selection) top.push(selectionEntity(level, selection, catalog));
       deleteBtn.classList.toggle("visible", selection?.kind === "placed");
-      renderer.sync([...entities, ...extra]);
+      renderer.sync([
+        ...layers.ground,
+        ...preview.ground,
+        ...layers.vehicles,
+        ...preview.vehicles,
+        ...layers.canopy,
+        ...top,
+        ...preview.overlay,
+      ]);
     },
     dispose(): void {
       window.removeEventListener("keydown", onKeyDown);

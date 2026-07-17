@@ -190,6 +190,11 @@
       .menu-level-delete {
         border-color: rgba(255, 120, 110, 0.4);
       }
+      .menu-level-delete.confirm {
+        background: rgba(178, 48, 40, 0.95);
+        border-color: rgba(255, 130, 120, 0.7);
+        font: 700 12px system-ui, sans-serif;
+      }
       .menu-edit-button {
         padding: 12px 20px;
         border: 2px solid rgba(255, 255, 255, 0.25);
@@ -453,6 +458,55 @@
       }
       .editor-toast.error {
         background: rgba(178, 48, 40, 0.95);
+      }
+      .editor-exit-dialog {
+        position: absolute;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        background: rgba(10, 12, 15, 0.55);
+        pointer-events: auto;
+      }
+      .editor-exit-dialog.open {
+        display: flex;
+      }
+      .editor-exit-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        padding: 24px 28px;
+        border-radius: 16px;
+        background: linear-gradient(180deg, #24303a, #18222b);
+        border: 2px solid rgba(255, 255, 255, 0.14);
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+        max-width: min(420px, calc(100vw - 32px));
+      }
+      .editor-exit-panel p {
+        margin: 0;
+        color: #fff;
+        font: 600 17px system-ui, sans-serif;
+      }
+      .editor-exit-buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .editor-exit-buttons button {
+        padding: 10px 16px;
+        border: 2px solid rgba(255, 255, 255, 0.2);
+        border-radius: 10px;
+        background: rgba(50, 55, 62, 0.9);
+        color: #fff;
+        font: 600 14px system-ui, sans-serif;
+        cursor: pointer;
+      }
+      .editor-exit-buttons .editor-exit-save {
+        background: linear-gradient(180deg, #2f7fd6, #2565ad);
+      }
+      .editor-exit-buttons .editor-exit-discard {
+        background: rgba(120, 34, 28, 0.92);
+        border-color: rgba(255, 120, 110, 0.5);
       }
       @keyframes editor-toast-fade {
         from {
