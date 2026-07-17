@@ -1,4 +1,5 @@
 import { add, dot, length, midpoint, normalise, perp, rotate, sub, type Vec2 } from "../../engine/math/vec2";
+import type { Radians } from "../../engine/math/angles";
 import type { Metres } from "../../engine/math/units";
 import type { Obb } from "../../engine/math/obb";
 import type { CarState, CarVariant, TrailerState, TrailerVariant } from "./vehicle-types";
@@ -55,6 +56,12 @@ export function wheelWorldPositions(
 
 export function hitchWorld(car: CarState, variant: CarVariant): Vec2 {
   return carLocalToWorld(car, variant, variant.hitch);
+}
+
+/** Rear-axle reference position that puts the car's body centre at `centre` for the given heading. */
+export function rearAxleForBodyCentre(args: { centre: Vec2; heading: Radians; variant: CarVariant }): Vec2 {
+  const { rearAxleCentre } = deriveCarGeometry(args.variant);
+  return add(args.centre, rotate(rearAxleCentre, args.heading));
 }
 
 export function carFootprint(car: CarState, variant: CarVariant): Obb {

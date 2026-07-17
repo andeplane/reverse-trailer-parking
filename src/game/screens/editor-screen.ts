@@ -15,15 +15,13 @@ import {
 } from "../level/editor-model";
 import { length, sub } from "../../engine/math/vec2";
 import { cellCenter, withTile, worldToCell, type TileType } from "../level/tile-types";
+import { tileGroundTexture } from "../view/tile-decor";
 import { worldToEntities } from "../view/world-view";
 import { worldToDebugEntities } from "../view/debug-view";
 import { allCarVariants } from "../vehicle/variants";
 import { findCarVariant, type VariantCatalog } from "../vehicle/vehicle-types";
 import type { Screen } from "./screen";
 
-function previewTileTexture(type: TileType): string {
-  return `tile-${type === "tree" ? "grass" : type}`;
-}
 
 function outlineEntity(id: string, position: Vec2, rotation: Radians, width: Metres, length: Metres, color: number): Entity {
   return {
@@ -49,8 +47,6 @@ const TILE_BRUSHES: { tile: TileType; label: string }[] = [
   { tile: "grass", label: "Grass" },
   { tile: "bay", label: "Bay (closed end)" },
   { tile: "bay-open", label: "Bay (open)" },
-  { tile: "curb", label: "Curb" },
-  { tile: "curb-corner", label: "Curb corner" },
   { tile: "hedge", label: "Hedge" },
   { tile: "tree", label: "Tree" },
 ];
@@ -436,7 +432,7 @@ export function createEditorScreen(args: {
           position: center,
           rotation: (tool.tile === "tree" ? 0 : brushRot * HALF_PI) as Radians,
           size: { width: size, length: size },
-          visual: { kind: "sprite", texture: previewTileTexture(tool.tile) },
+          visual: { kind: "sprite", texture: tileGroundTexture(tool.tile) },
         },
       ];
       if (tool.tile === "tree") {

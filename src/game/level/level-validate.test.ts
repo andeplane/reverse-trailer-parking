@@ -29,7 +29,9 @@ describe("validateLevel", () => {
   });
 
   it("rejects a grid whose cell count does not match cols*rows", () => {
-    expect(() => validateLevel(level({ grid: { tileSize: 5, cols: 2, rows: 2, cells: [{ type: "asphalt", rot: 0 }] } }), catalog)).toThrow(RangeError);
+    expect(() =>
+      validateLevel(level({ grid: { ...filledGrid(2, 2, 5), cells: [{ type: "asphalt", rot: 0 }] } }), catalog),
+    ).toThrow(RangeError);
   });
 
   it("rejects an unknown tile type or bad rotation", () => {

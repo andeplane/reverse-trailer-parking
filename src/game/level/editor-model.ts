@@ -9,7 +9,7 @@ import { filledGrid, gridHeight, gridWidth } from "./tile-types";
 
 /** A blank level to start authoring from: an all-asphalt grid, a drivable rig, exit on the right. */
 export function emptyLevel(id: string): Level {
-  const grid = filledGrid(16, 12, 4, "asphalt");
+  const grid = filledGrid(24, 16, 2.5, "asphalt");
   const hw = gridWidth(grid) / 2;
   return {
     id,

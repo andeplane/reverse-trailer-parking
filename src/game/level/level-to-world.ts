@@ -3,7 +3,7 @@ import type { Obb } from "../../engine/math/obb";
 import type { CarSpawn, VariantCatalog, World } from "../vehicle/vehicle-types";
 import { createWorld } from "../vehicle/world";
 import type { ExitLine, Level, LevelCar } from "./level-types";
-import { cellCenter, gridHeight, gridWidth, isSolidTile, type TileGrid } from "./tile-types";
+import { cellCenter, curbRuns, CURB_THICKNESS, gridHeight, gridWidth, isSolidTile, type TileGrid } from "./tile-types";
 
 const WALL_THICKNESS = 0.5;
 /** Extra clearance added on each side of the exit opening in the boundary. */
@@ -67,7 +67,7 @@ export function boundaryWithExitGap(size: { width: number; height: number }, exi
   return walls;
 }
 
-/** Collidable footprints of solid tiles (curb, hedge, tree). */
+/** Collidable footprints of solid tiles (hedge, tree). */
 export function solidTileFootprints(grid: TileGrid): Obb[] {
   const obbs: Obb[] = [];
   const half = grid.tileSize / 2;
@@ -82,6 +82,22 @@ export function solidTileFootprints(grid: TileGrid): Obb[] {
   return obbs;
 }
 
+/** Thin collidable strips along every curbed-edge run (ends extended so corners are tight). */
+export function curbFootprints(grid: TileGrid): Obb[] {
+  const halfT = CURB_THICKNESS / 2;
+  return curbRuns(grid).map((run) => {
+    const dx = run.b.x - run.a.x;
+    const dy = run.b.y - run.a.y;
+    const len = Math.hypot(dx, dy);
+    return {
+      center: { x: (run.a.x + run.b.x) / 2, y: (run.a.y + run.b.y) / 2 },
+      halfL: len / 2 + halfT,
+      halfW: halfT,
+      rotation: Math.atan2(dy, dx) as Radians,
+    };
+  });
+}
+
 /** Builds the runtime `World` from an authored `Level`. Pure; deterministic. */
 export function levelToWorld(level: Level, catalog: VariantCatalog): World {
   const cars: CarSpawn[] = [
@@ -92,7 +108,7 @@ export function levelToWorld(level: Level, catalog: VariantCatalog): World {
   return createWorld({
     cars,
     boundary: boundaryWithExitGap(bounds, level.exit),
-    solids: solidTileFootprints(level.grid),
+    solids: [...solidTileFootprints(level.grid), ...curbFootprints(level.grid)],
     grid: level.grid,
     exit: level.exit,
     bounds,

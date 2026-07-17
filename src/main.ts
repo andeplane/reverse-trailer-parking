@@ -4,20 +4,26 @@ import { createPhaserSurface } from "./engine/render/create-phaser-surface";
 import { createVariantCatalog, allCarVariants, allTrailerVariants } from "./game/vehicle/variants";
 import { builtInLevels } from "./game/level/built-in-levels";
 import { loadCustomLevels, mergeLevels } from "./game/level/level-store";
-import { ALL_TILE_TYPES } from "./game/level/tile-types";
 import { createApp } from "./game/screens/app-shell";
 
-const WORLD_TEXTURES: Record<string, string> = {
-  "car-red": "/assets/car-red.png",
-  "car-blue": "/assets/car-blue.png",
-  "car-green": "/assets/car-green.png",
-  "car-orange": "/assets/car-orange.png",
-  "car-purple": "/assets/car-purple.png",
-  "trailer-white": "/assets/trailer-white.png",
-  "trailer-utility": "/assets/trailer-utility.png",
-  // Tile textures (tree renders grass on the ground + the tree canopy on top).
-  ...Object.fromEntries(ALL_TILE_TYPES.map((t) => [`tile-${t}`, `/assets/tile-${t}.png`])),
-};
+// Ground/vehicle sprites. Bay lines + curbs are vector-drawn, so they need no textures
+// (tree renders grass on the ground + the tree canopy on top).
+const TEXTURE_NAMES = [
+  "car-red",
+  "car-blue",
+  "car-green",
+  "car-orange",
+  "car-purple",
+  "trailer-white",
+  "trailer-utility",
+  "tile-asphalt",
+  "tile-grass",
+  "tile-hedge",
+  "tile-tree",
+] as const;
+const WORLD_TEXTURES: Record<string, string> = Object.fromEntries(
+  TEXTURE_NAMES.map((name) => [name, `${import.meta.env.BASE_URL}assets/${name}.png`]),
+);
 
 async function main(): Promise<void> {
   const gameRoot = document.getElementById("game-root");

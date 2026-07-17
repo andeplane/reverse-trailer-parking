@@ -11,12 +11,8 @@ import {
 } from "../vehicle/vehicle-geometry";
 import { findCarVariant, findTrailerVariant, type VariantCatalog, type World } from "../vehicle/vehicle-types";
 import type { ExitLine } from "../level/level-types";
-import { CANOPY_TILES, cellCenter, type TileGrid, type TileType } from "../level/tile-types";
-
-/** Texture key for a tile type (tree renders grass on the ground + the tree canopy on top). */
-function tileTexture(type: TileType): string {
-  return `tile-${type === "tree" ? "grass" : type}`;
-}
+import { CANOPY_TILES, cellCenter, type TileGrid } from "../level/tile-types";
+import { bayLineEntities, curbEntities, tileGroundTexture } from "./tile-decor";
 
 const EXIT_STYLE: RectStyle = {
   fillColor: 0xffd23f,
@@ -76,7 +72,7 @@ function tileEntities(grid: TileGrid): { ground: Entity[]; canopy: Entity[] } {
         position: center,
         rotation: tile.type === "tree" ? (0 as Radians) : rotation,
         size: { width: size, length: size },
-        visual: { kind: "sprite", texture: tileTexture(tile.type) },
+        visual: { kind: "sprite", texture: tileGroundTexture(tile.type) },
       });
       if (CANOPY_TILES.has(tile.type)) {
         canopy.push({
@@ -111,7 +107,8 @@ function exitEntity(exit: ExitLine): Entity {
  */
 export function worldToEntities(world: World, catalog: VariantCatalog): Entity[] {
   const tiles = tileEntities(world.grid);
-  const ground: Entity[] = [...tiles.ground]; // tiles + exit marker, below vehicles
+  // Tiles, then painted bay lines and curbs on top of them, then exit marker — all below vehicles.
+  const ground: Entity[] = [...tiles.ground, ...bayLineEntities(world.grid), ...curbEntities(world.grid)];
   const trailerBodies: Entity[] = [];
   const drawbars: Entity[] = [];
   const carBodies: Entity[] = [];

@@ -4,15 +4,15 @@ import { createVariantCatalog, allCarVariants, allTrailerVariants } from "../veh
 import { drivableCar, placedCars, toRig } from "../vehicle/vehicle-types";
 import { obstacleFootprints, rigFootprints } from "../collision/collision-system";
 import type { Level } from "./level-types";
-import { filledGrid, withTile } from "./tile-types";
+import { CURB_THICKNESS, filledGrid, withCurb, withTile } from "./tile-types";
 import { boundaryWithExitGap, levelToWorld, solidTileFootprints } from "./level-to-world";
 
 const catalog = createVariantCatalog({ cars: allCarVariants, trailers: allTrailerVariants });
 
 function baseLevel(overrides: Partial<Level> = {}): Level {
-  // 40 x 30 grid with two solid tiles (a curb and a hedge).
+  // 40 x 30 grid with two solid tiles (a tree and a hedge).
   let grid = filledGrid(8, 6, 5);
-  grid = withTile(grid, 0, 0, { type: "curb", rot: 0 });
+  grid = withTile(grid, 0, 0, { type: "tree", rot: 0 });
   grid = withTile(grid, 1, 0, { type: "hedge", rot: 0 });
   return {
     id: "t",
@@ -38,9 +38,21 @@ describe("levelToWorld", () => {
 
   it("turns solid tiles into collidable footprints", () => {
     const world = levelToWorld(baseLevel(), catalog);
-    expect(world.solids).toHaveLength(2); // curb + hedge
+    expect(world.solids).toHaveLength(2); // tree + hedge
     const withoutSolids = levelToWorld(baseLevel({ grid: filledGrid(8, 6, 5) }), catalog);
     expect(obstacleFootprints(world).length).toBe(obstacleFootprints(withoutSolids).length + 2);
+  });
+
+  it("turns curbed edges into thin collidable strips", () => {
+    let grid = filledGrid(8, 6, 5);
+    grid = withCurb(grid, { o: "h", col: 2, row: 3 }, true);
+    grid = withCurb(grid, { o: "h", col: 3, row: 3 }, true);
+    grid = withCurb(grid, { o: "v", col: 2, row: 3 }, true);
+    const world = levelToWorld(baseLevel({ grid }), catalog);
+    expect(world.solids).toHaveLength(2); // one merged horizontal run + one vertical
+    const horizontal = world.solids.find((s) => s.rotation === 0);
+    expect(horizontal?.halfL).toBeCloseTo(5 + CURB_THICKNESS / 2); // two merged 5m edges + end caps
+    expect(horizontal?.halfW).toBeCloseTo(CURB_THICKNESS / 2);
   });
 
   it("starts with the rig clear of all obstacles", () => {

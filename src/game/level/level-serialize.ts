@@ -1,6 +1,6 @@
 import type { Vec2 } from "../../engine/math/vec2";
 import type { ExitLine, Level, LevelCar } from "./level-types";
-import type { Tile, TileGrid, TileType } from "./tile-types";
+import { ALL_TILE_TYPES, sideEdge, withCurb, type Tile, type TileGrid, type TileType } from "./tile-types";
 
 class ParseError extends RangeError {}
 
@@ -31,20 +31,66 @@ function parseCar(v: unknown, where: string): LevelCar {
   return car;
 }
 
-function parseTile(v: unknown, where: string): Tile {
+/** Tile types from older saves that are no longer tiles (curbs are edge properties now). */
+const LEGACY_CURB_TYPES: ReadonlySet<string> = new Set(["curb", "curb-corner"]);
+const KNOWN_TILE_TYPES: ReadonlySet<string> = new Set<string>(ALL_TILE_TYPES);
+
+function parseRawTile(v: unknown, where: string): { type: string; rot: number } {
   if (!isObject(v)) throw new ParseError(`${where}: expected {type,rot}`);
-  return { type: str(v.type, `${where}.type`) as TileType, rot: num(v.rot, `${where}.rot`) };
+  const type = str(v.type, `${where}.type`);
+  if (!KNOWN_TILE_TYPES.has(type) && !LEGACY_CURB_TYPES.has(type)) {
+    throw new ParseError(`${where}.type: unknown tile "${type}"`);
+  }
+  return { type, rot: num(v.rot, `${where}.rot`) };
+}
+
+function boolArray(v: unknown, length: number): boolean[] | null {
+  if (!Array.isArray(v) || v.length !== length || !v.every((b) => typeof b === "boolean")) return null;
+  return v as boolean[];
+}
+
+/**
+ * Legacy migration: full-tile curbs become an outline of edge curbs around each contiguous curb
+ * region (edges where the neighbour is not also a legacy curb tile), and the tile itself asphalt.
+ */
+function migrateLegacyCurbTiles(grid: TileGrid, rawTypes: string[]): TileGrid {
+  const isCurbCell = (col: number, row: number): boolean =>
+    col >= 0 && col < grid.cols && row >= 0 && row < grid.rows && LEGACY_CURB_TYPES.has(rawTypes[row * grid.cols + col]!);
+  let out = grid;
+  for (let row = 0; row < grid.rows; row++) {
+    for (let col = 0; col < grid.cols; col++) {
+      if (!isCurbCell(col, row)) continue;
+      if (!isCurbCell(col, row - 1)) out = withCurb(out, sideEdge(col, row, "N"), true);
+      if (!isCurbCell(col, row + 1)) out = withCurb(out, sideEdge(col, row, "S"), true);
+      if (!isCurbCell(col - 1, row)) out = withCurb(out, sideEdge(col, row, "W"), true);
+      if (!isCurbCell(col + 1, row)) out = withCurb(out, sideEdge(col, row, "E"), true);
+    }
+  }
+  return out;
 }
 
 function parseGrid(v: unknown): TileGrid {
   if (!isObject(v)) throw new ParseError("grid: expected an object");
   if (!Array.isArray(v.cells)) throw new ParseError("grid.cells: expected an array");
-  return {
+  const cols = num(v.cols, "grid.cols");
+  const rows = num(v.rows, "grid.rows");
+  const raw = v.cells.map((c, i) => parseRawTile(c, `grid.cells[${i}]`));
+  const cells: Tile[] = raw.map((t) => ({
+    type: (LEGACY_CURB_TYPES.has(t.type) ? "asphalt" : t.type) as TileType,
+    rot: LEGACY_CURB_TYPES.has(t.type) ? 0 : t.rot,
+  }));
+  const grid: TileGrid = {
     tileSize: num(v.tileSize, "grid.tileSize"),
-    cols: num(v.cols, "grid.cols"),
-    rows: num(v.rows, "grid.rows"),
-    cells: v.cells.map((c, i) => parseTile(c, `grid.cells[${i}]`)),
+    cols,
+    rows,
+    cells,
+    hCurbs: boolArray(v.hCurbs, (rows + 1) * cols) ?? new Array<boolean>((rows + 1) * cols).fill(false),
+    vCurbs: boolArray(v.vCurbs, rows * (cols + 1)) ?? new Array<boolean>(rows * (cols + 1)).fill(false),
   };
+  return migrateLegacyCurbTiles(
+    grid,
+    raw.map((t) => t.type),
+  );
 }
 
 function parseExit(v: unknown): ExitLine {
