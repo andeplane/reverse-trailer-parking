@@ -4,8 +4,9 @@ import type { Screen } from "./screen";
 /**
  * The main menu: a DOM overlay listing playable levels plus a "New level" editor entry. Every
  * level can be opened in the editor (editing a built-in saves a custom copy over it); custom
- * (editor-authored) levels can also be deleted. Purely DOM (testable under jsdom); the world
- * render is cleared by the app before showing it.
+ * (editor-authored) levels can also be deleted — via an inline two-step confirm (🗑 → "Sure?"),
+ * NEVER a native browser popup. Purely DOM (testable under jsdom); the world render is cleared
+ * by the app before showing it.
  */
 export function createMenuScreen(args: {
   parent: HTMLElement;
@@ -16,13 +17,20 @@ export function createMenuScreen(args: {
   /** Open the editor: with a level to edit it, without to start a new one. */
   onEdit: (level?: Level) => void;
   onDelete?: (level: Level) => void;
-  /** Confirmation hook for deletes (defaults to window.confirm). */
-  confirmDelete?: (level: Level) => boolean;
 }): Screen {
   const { parent, levels, onPlay, onEdit, onDelete } = args;
   const customIds = args.customIds ?? new Set<string>();
-  const confirmDelete =
-    args.confirmDelete ?? ((level: Level) => window.confirm(`Delete level “${level.name}”? This cannot be undone.`));
+
+  // At most one delete button is in its armed ("Sure?") state; clicking anywhere else disarms it.
+  let disarmActiveDelete: (() => void) | null = null;
+  function disarm(): void {
+    disarmActiveDelete?.();
+    disarmActiveDelete = null;
+  }
+  const onDocPointerDown = (e: Event): void => {
+    if (!(e.target instanceof Element && e.target.classList.contains("confirm"))) disarm();
+  };
+  document.addEventListener("pointerdown", onDocPointerDown);
 
   const root = document.createElement("div");
   root.className = "menu-screen";
@@ -70,7 +78,17 @@ export function createMenuScreen(args: {
       del.title = `Delete “${level.name}”`;
       del.textContent = "🗑";
       del.addEventListener("click", () => {
-        if (confirmDelete(level)) onDelete(level);
+        if (del.classList.contains("confirm")) {
+          onDelete(level);
+          return;
+        }
+        disarm();
+        del.classList.add("confirm");
+        del.textContent = "Sure?";
+        disarmActiveDelete = () => {
+          del.classList.remove("confirm");
+          del.textContent = "🗑";
+        };
       });
       row.appendChild(del);
     }
@@ -90,6 +108,7 @@ export function createMenuScreen(args: {
   return {
     tick(): void {},
     dispose(): void {
+      document.removeEventListener("pointerdown", onDocPointerDown);
       root.remove();
     },
   };

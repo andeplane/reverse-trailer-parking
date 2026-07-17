@@ -131,10 +131,9 @@ describe("createApp", () => {
     expect((controlsRoot.querySelector(".editor-name") as HTMLInputElement).value).toBe("a");
 
     app.showMenu();
-    const confirmSpy = window.confirm;
-    window.confirm = () => true;
-    (controlsRoot.querySelector(".menu-level-delete") as HTMLElement).click();
-    window.confirm = confirmSpy;
+    const del = controlsRoot.querySelector(".menu-level-delete") as HTMLElement;
+    del.click(); // arm the inline confirm
+    del.click(); // confirm
     expect(controlsRoot.querySelectorAll(".menu-level-card")).toHaveLength(2); // mine is gone
   });
 
