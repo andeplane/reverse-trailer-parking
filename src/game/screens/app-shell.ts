@@ -142,6 +142,7 @@ export function createApp(args: {
           catalog,
           onExitToMenu: () => app.showMenu(),
           ...(next ? { onNextLevel: () => app.playLevel(next) } : {}),
+          isLastLevel: index >= 0 && !next,
           ...(isTouch !== undefined ? { isTouch } : {}),
         }),
       );

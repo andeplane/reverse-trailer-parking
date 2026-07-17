@@ -5,7 +5,7 @@ import { createWinOverlay } from "./win-overlay";
 let parent: HTMLElement | undefined;
 afterEach(() => parent?.remove());
 
-function mount(opts: { onNext?: () => void; onRetry?: () => void; onMenu?: () => void } = {}) {
+function mount(opts: { onNext?: () => void; onRetry?: () => void; onMenu?: () => void; isLastLevel?: boolean } = {}) {
   parent = document.createElement("div");
   document.body.appendChild(parent);
   const overlay = createWinOverlay({
@@ -14,6 +14,7 @@ function mount(opts: { onNext?: () => void; onRetry?: () => void; onMenu?: () =>
     onRetry: opts.onRetry ?? (() => {}),
     onMenu: opts.onMenu ?? (() => {}),
     ...(opts.onNext ? { onNext: opts.onNext } : {}),
+    ...(opts.isLastLevel !== undefined ? { isLastLevel: opts.isLastLevel } : {}),
   });
   return { overlay, parent };
 }
@@ -46,6 +47,14 @@ describe("createWinOverlay", () => {
     (parent.querySelector(".win-menu") as HTMLElement).click();
     expect(retry).toBe(1);
     expect(menu).toBe(1);
+  });
+
+  it("celebrates finishing the last level, but not otherwise", () => {
+    const done = mount({ isLastLevel: true });
+    expect(done.parent.querySelector(".win-finished")?.textContent).toContain("every level");
+    done.parent.remove();
+    const mid = mount({ isLastLevel: false });
+    expect(mid.parent.querySelector(".win-finished")).toBeNull();
   });
 
   it("removes its DOM on dispose", () => {

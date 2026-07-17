@@ -35,9 +35,11 @@ export function createPlayScreen(args: {
   catalog: VariantCatalog;
   onExitToMenu: () => void;
   onNextLevel?: () => void;
+  /** True when this is the last level in the list (win overlay celebrates finishing everything). */
+  isLastLevel?: boolean;
   isTouch?: boolean;
 }): Screen {
-  const { clock, renderer, controlsRoot, level, catalog, onExitToMenu, onNextLevel } = args;
+  const { clock, renderer, controlsRoot, level, catalog, onExitToMenu, onNextLevel, isLastLevel } = args;
   const isTouch =
     args.isTouch ?? (window.matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0);
 
@@ -101,6 +103,7 @@ export function createPlayScreen(args: {
     winOverlay = createWinOverlay({
       parent: controlsRoot,
       levelName: level.name,
+      isLastLevel: isLastLevel ?? false,
       ...(onNextLevel ? { onNext: onNextLevel } : {}),
       onRetry: () => {
         winOverlay?.dispose();

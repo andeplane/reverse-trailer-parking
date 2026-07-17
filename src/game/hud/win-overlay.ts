@@ -8,11 +8,13 @@ export interface WinOverlay {
 export function createWinOverlay(args: {
   parent: HTMLElement;
   levelName: string;
+  /** True when there is no next level — celebrate finishing the list. */
+  isLastLevel?: boolean;
   onNext?: () => void;
   onRetry: () => void;
   onMenu: () => void;
 }): WinOverlay {
-  const { parent, levelName, onNext, onRetry, onMenu } = args;
+  const { parent, levelName, isLastLevel, onNext, onRetry, onMenu } = args;
 
   const root = document.createElement("div");
   root.className = "win-overlay";
@@ -27,6 +29,12 @@ export function createWinOverlay(args: {
   subtitle.className = "win-subtitle";
   subtitle.textContent = levelName;
   panel.append(title, subtitle);
+  if (isLastLevel) {
+    const finished = document.createElement("p");
+    finished.className = "win-finished";
+    finished.textContent = "You finished every level! 🎉";
+    panel.appendChild(finished);
+  }
 
   const buttons = document.createElement("div");
   buttons.className = "win-buttons";
