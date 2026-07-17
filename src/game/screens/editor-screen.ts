@@ -271,6 +271,7 @@ export function createEditorScreen(args: {
   nameInput.placeholder = "Level name";
   nameInput.maxLength = 40;
   nameInput.value = level.name;
+  nameInput.addEventListener("focus", () => nameInput.select()); // one keystroke to rename
   nameInput.addEventListener("input", () => {
     level = { ...level, name: nameInput.value };
   });

@@ -150,6 +150,16 @@ describe("createApp", () => {
     expect(names.some((n) => n?.includes("Fresh"))).toBe(true);
   });
 
+  it("gives every new draft a unique default name", () => {
+    const storage = fakeStorage();
+    const { app, controlsRoot } = makeApp(storage);
+    app.openEditor();
+    expect((controlsRoot.querySelector(".editor-name") as HTMLInputElement).value).toBe("New level");
+    (controlsRoot.querySelector(".editor-save") as HTMLElement).click();
+    app.openEditor();
+    expect((controlsRoot.querySelector(".editor-name") as HTMLInputElement).value).toBe("New level 2");
+  });
+
   it("testing an editor draft returns to the editor (not the menu) with the draft intact", () => {
     const { app, controlsRoot } = makeApp();
     app.openEditor();

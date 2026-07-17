@@ -1,5 +1,6 @@
 import type { Clock } from "../../engine/loop/clock";
 import type { Renderer } from "../../engine/render/renderer";
+import { emptyLevel } from "../level/editor-model";
 import type { Level } from "../level/level-types";
 import { deleteCustomLevel, loadCustomLevels, mergeLevels, saveCustomLevel, type LevelStorage } from "../level/level-store";
 import type { VariantCatalog } from "../vehicle/vehicle-types";
@@ -49,6 +50,18 @@ export function createApp(args: {
 
   function saveLevel(level: Level): void {
     if (storage) saveCustomLevel(level, storage);
+  }
+
+  /** "New level", "New level 2", … — never two identical default names in the menu. */
+  function uniqueDraftName(): string {
+    const names = new Set(allLevels().map((l) => l.name));
+    if (!names.has("New level")) return "New level";
+    let n = 2;
+    while (names.has(`New level ${n}`)) n++;
+    return `New level ${n}`;
+  }
+  function newDraft(): Level {
+    return { ...emptyLevel(`custom-${Date.now().toString(36)}`), name: uniqueDraftName() };
   }
   function deleteLevel(level: Level): void {
     if (storage) deleteCustomLevel(level.id, storage);
@@ -122,7 +135,7 @@ export function createApp(args: {
           renderer,
           controlsRoot,
           catalog,
-          ...(initial ? { initial } : {}),
+          initial: initial ?? newDraft(),
           onExitToMenu: () => app.showMenu(),
           onTest: (draft) => testDraft(draft),
           onSave: (level) => saveLevel(level),
