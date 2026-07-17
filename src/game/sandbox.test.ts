@@ -52,6 +52,9 @@ function fakeRenderer(): Renderer & { syncCalls: Entity[][]; followCalls: Vec2[]
     screenToWorld() {
       return { x: 0, y: 0 };
     },
+    worldToScreen() {
+      return { x: 0, y: 0 };
+    },
     dispose() {
       this.disposed = true;
     },

@@ -9,20 +9,23 @@ import { createEditorScreen } from "./editor-screen";
 
 const catalog = createVariantCatalog({ cars: allCarVariants, trailers: allTrailerVariants });
 
-function fakeRenderer(worldPoint: Vec2): Renderer & { syncs: number; camera: number; last: Entity[] } {
+function fakeRenderer(worldPoint: Vec2): Renderer & { syncs: number; camera: number; lastZoom: number; last: Entity[] } {
   const r = {
     syncs: 0,
     camera: 0,
+    lastZoom: 0,
     last: [] as Entity[],
     sync: (e: Entity[]) => {
       r.syncs += 1;
       r.last = e;
     },
     follow: () => {},
-    setCamera: () => {
+    setCamera: (_c: Vec2, zoom: number) => {
       r.camera += 1;
+      r.lastZoom = zoom;
     },
     screenToWorld: () => worldPoint,
+    worldToScreen: () => ({ x: 0, y: 0 }),
     dispose: () => {},
   };
   return r;
@@ -102,6 +105,23 @@ describe("createEditorScreen", () => {
     expect(getSaved()?.grid.cells.some((c) => c.type === "grass")).toBe(true);
   });
 
+  it("bay brush paints the full 2-tile bay (closed end + entrance) in one click", () => {
+    const { controlsRoot, getSaved } = mount({ x: 0.5, y: 0.5 });
+    (controlsRoot.querySelector('[data-tile="bay"]') as HTMLElement).click();
+    const cap = capture(controlsRoot);
+    cap.dispatchEvent(pointer("pointerdown"));
+    cap.dispatchEvent(pointer("pointerup"));
+    save(controlsRoot);
+    const cells = getSaved()!.grid.cells;
+    expect(cells.filter((c) => c.type === "bay")).toHaveLength(1);
+    expect(cells.filter((c) => c.type === "bay-open")).toHaveLength(1);
+    // rot 0 opens south: the entrance sits one row below the closed end.
+    const grid = getSaved()!.grid;
+    const closedIndex = cells.findIndex((c) => c.type === "bay");
+    const openIndex = cells.findIndex((c) => c.type === "bay-open");
+    expect(openIndex - closedIndex).toBe(grid.cols);
+  });
+
   it("paints a tile onto the grid where the pointer maps", () => {
     const { controlsRoot, getSaved } = mount({ x: 0, y: 0 });
     (controlsRoot.querySelector('[data-tile="grass"]') as HTMLElement).click();
@@ -154,7 +174,7 @@ describe("createEditorScreen", () => {
     expect(getSaved()?.placedCars).toHaveLength(1); // not two
   });
 
-  it("undoes the last change with Ctrl/Cmd+Z", () => {
+  it("undoes with Ctrl/Cmd+Z and redoes with Shift+Ctrl/Cmd+Z", () => {
     const { controlsRoot, getSaved } = mount({ x: 6, y: 3 });
     const cap = capture(controlsRoot);
     (controlsRoot.querySelector(".editor-car") as HTMLElement).click();
@@ -163,6 +183,18 @@ describe("createEditorScreen", () => {
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "z", ctrlKey: true }));
     save(controlsRoot);
     expect(getSaved()?.placedCars).toHaveLength(0);
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "z", ctrlKey: true, shiftKey: true }));
+    save(controlsRoot);
+    expect(getSaved()?.placedCars).toHaveLength(1); // redo brought the car back
+  });
+
+  it("re-fits the camera with the ⛶ button after zooming away", () => {
+    const { screen, controlsRoot, renderer } = mount();
+    screen.tick();
+    (controlsRoot.querySelectorAll(".editor-zoom")[0] as HTMLElement).click(); // zoom in
+    (controlsRoot.querySelector(".editor-fit") as HTMLElement).click();
+    screen.tick();
+    expect(renderer.camera).toBeGreaterThan(0); // camera updates flow through setCamera
   });
 
   it("rotates the car under the cursor with R in −30° steps (clockwise on screen)", () => {
@@ -212,7 +244,7 @@ describe("createEditorScreen", () => {
     expect((controlsRoot.querySelector('[data-tile="hedge"]') as HTMLElement).classList.contains("active")).toBe(true);
   });
 
-  it("deletes the selected car with ⌫ and shows the contextual delete button", () => {
+  it("deletes the selected car with ⌫ and shows the contextual selection toolbar", () => {
     const { screen, controlsRoot, getSaved } = mount({ x: 6, y: 3 });
     const cap = capture(controlsRoot);
     (controlsRoot.querySelector(".editor-car") as HTMLElement).click();
@@ -223,10 +255,47 @@ describe("createEditorScreen", () => {
     cap.dispatchEvent(pointer("pointerdown")); // select the car under the cursor
     cap.dispatchEvent(pointer("pointerup"));
     screen.tick();
-    expect((controlsRoot.querySelector(".editor-delete") as HTMLElement).classList.contains("visible")).toBe(true);
+    expect((controlsRoot.querySelector(".editor-selection-bar") as HTMLElement).classList.contains("visible")).toBe(true);
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace" }));
     save(controlsRoot);
     expect(getSaved()?.placedCars).toHaveLength(0);
+  });
+
+  it("rotates the selection from the toolbar buttons (touch-friendly)", () => {
+    const { controlsRoot, getSaved } = mount({ x: 6, y: 3 });
+    const cap = capture(controlsRoot);
+    (controlsRoot.querySelector(".editor-car") as HTMLElement).click();
+    cap.dispatchEvent(pointer("pointerdown"));
+    cap.dispatchEvent(pointer("pointerup"));
+    const selectBtn = [...controlsRoot.querySelectorAll(".editor-tool")].find((b) => b.textContent === "Select / Move") as HTMLElement;
+    selectBtn.click();
+    cap.dispatchEvent(pointer("pointerdown"));
+    cap.dispatchEvent(pointer("pointerup"));
+    (controlsRoot.querySelector(".editor-rotate-cw") as HTMLElement).click();
+    save(controlsRoot);
+    expect(getSaved()?.placedCars[0]?.heading).toBeCloseTo(-Math.PI / 6);
+  });
+
+  it("pinch with two pointers zooms the camera instead of painting", () => {
+    const { screen, controlsRoot, renderer, getSaved } = mount({ x: 0, y: 0 });
+    (controlsRoot.querySelector('[data-tile="grass"]') as HTMLElement).click();
+    const cap = capture(controlsRoot);
+    const touch = (type: string, id: number, x: number, y: number): void => {
+      const e = new MouseEvent(type, { clientX: x, clientY: y, bubbles: true, cancelable: true });
+      Object.defineProperty(e, "pointerId", { value: id });
+      cap.dispatchEvent(e);
+    };
+    screen.tick();
+    const zoomBefore = renderer.lastZoom;
+    touch("pointerdown", 1, 100, 100);
+    touch("pointerdown", 2, 200, 100); // second finger → pinch, not paint
+    touch("pointermove", 2, 300, 100); // spread fingers → zoom in
+    screen.tick();
+    expect(renderer.lastZoom).toBeCloseTo(zoomBefore * 2); // distance doubled
+    touch("pointerup", 2, 300, 100);
+    touch("pointerup", 1, 100, 100);
+    save(controlsRoot);
+    expect(getSaved()?.placedCars ?? []).toHaveLength(0); // lifting after a pinch places nothing
   });
 
   it("shows a save toast and refuses to save an invalid level", () => {
@@ -289,6 +358,72 @@ describe("createEditorScreen", () => {
     expect((second.controlsRoot.querySelector(".editor-name") as HTMLInputElement).value).toBe("Existing");
     save(second.controlsRoot);
     expect(second.getSaved()?.id).toBe(first.id);
+  });
+
+  it("exits straight to the menu when there are no unsaved changes", () => {
+    const { controlsRoot, getMenu } = mount();
+    (controlsRoot.querySelector(".editor-menu") as HTMLElement).click();
+    expect(getMenu()).toBe(1);
+  });
+
+  it("guards unsaved changes behind an in-app Save/Discard/Cancel dialog (no native popups)", () => {
+    const { controlsRoot, getMenu, getSaved } = mount({ x: 0, y: 0 });
+    (controlsRoot.querySelector('[data-tile="grass"]') as HTMLElement).click();
+    const cap = capture(controlsRoot);
+    cap.dispatchEvent(pointer("pointerdown"));
+    cap.dispatchEvent(pointer("pointerup"));
+
+    const menuBtn = controlsRoot.querySelector(".editor-menu") as HTMLElement;
+    menuBtn.click();
+    expect(getMenu()).toBe(0); // did NOT exit
+    const dialog = controlsRoot.querySelector(".editor-exit-dialog") as HTMLElement;
+    expect(dialog.classList.contains("open")).toBe(true);
+
+    (controlsRoot.querySelector(".editor-exit-cancel") as HTMLElement).click();
+    expect(dialog.classList.contains("open")).toBe(false);
+    expect(getMenu()).toBe(0); // cancel keeps editing
+
+    menuBtn.click();
+    (controlsRoot.querySelector(".editor-exit-save") as HTMLElement).click();
+    expect(getSaved()).toBeDefined(); // saved on the way out
+    expect(getMenu()).toBe(1);
+  });
+
+  it("can discard unsaved changes from the exit dialog", () => {
+    const { controlsRoot, getMenu, getSaved } = mount({ x: 0, y: 0 });
+    (controlsRoot.querySelector('[data-tile="grass"]') as HTMLElement).click();
+    const cap = capture(controlsRoot);
+    cap.dispatchEvent(pointer("pointerdown"));
+    cap.dispatchEvent(pointer("pointerup"));
+    (controlsRoot.querySelector(".editor-menu") as HTMLElement).click();
+    (controlsRoot.querySelector(".editor-exit-discard") as HTMLElement).click();
+    expect(getMenu()).toBe(1);
+    expect(getSaved()).toBeUndefined(); // nothing was saved
+  });
+
+  it("no longer prompts after saving (save clears the dirty state)", () => {
+    const { controlsRoot, getMenu } = mount({ x: 0, y: 0 });
+    (controlsRoot.querySelector('[data-tile="grass"]') as HTMLElement).click();
+    const cap = capture(controlsRoot);
+    cap.dispatchEvent(pointer("pointerdown"));
+    cap.dispatchEvent(pointer("pointerup"));
+    save(controlsRoot);
+    (controlsRoot.querySelector(".editor-menu") as HTMLElement).click();
+    expect(getMenu()).toBe(1); // straight out, no dialog
+  });
+
+  it("renders the tile placement ghost below vehicles (at its real layer)", () => {
+    // Hover the drivable rig's cell: the ghost tile must not cover the car sprite.
+    const { screen, controlsRoot, renderer } = mount({ x: -20, y: 0 });
+    (controlsRoot.querySelector('[data-tile="grass"]') as HTMLElement).click();
+    capture(controlsRoot).dispatchEvent(pointer("pointermove"));
+    screen.tick();
+    const ids = renderer.last.map((e) => e.id);
+    const ghost = ids.indexOf("editor:preview:tile");
+    const car = ids.indexOf("car:0");
+    const firstTile = ids.findIndex((id) => id.startsWith("tile:"));
+    expect(ghost).toBeGreaterThan(firstTile); // above existing tiles so it is visible
+    expect(ghost).toBeLessThan(car); // but below vehicles, like a real tile
   });
 
   it("removes its DOM on dispose", () => {

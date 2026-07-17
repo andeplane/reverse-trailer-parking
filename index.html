@@ -190,6 +190,11 @@
       .menu-level-delete {
         border-color: rgba(255, 120, 110, 0.4);
       }
+      .menu-level-delete.confirm {
+        background: rgba(178, 48, 40, 0.95);
+        border-color: rgba(255, 130, 120, 0.7);
+        font: 700 12px system-ui, sans-serif;
+      }
       .menu-edit-button {
         padding: 12px 20px;
         border: 2px solid rgba(255, 255, 255, 0.25);
@@ -232,6 +237,38 @@
         color: #cdd3da;
         font: 500 16px system-ui, sans-serif;
       }
+      .win-finished {
+        margin: 0;
+        color: #ffd23f;
+        font: 700 17px system-ui, sans-serif;
+      }
+      .win-time {
+        margin: 0;
+        color: #9fdcb0;
+        font: 600 15px system-ui, sans-serif;
+      }
+      .play-exit-arrow {
+        position: absolute;
+        display: none;
+        color: #ffd23f;
+        font-size: 30px;
+        text-shadow: 0 2px 6px rgba(0, 0, 0, 0.7);
+        pointer-events: none;
+      }
+      .play-exit-arrow.visible {
+        display: block;
+      }
+      .play-timer {
+        position: absolute;
+        top: max(88px, calc(env(safe-area-inset-top, 0px) + 72px));
+        left: 16px;
+        padding: 5px 12px;
+        border-radius: 12px;
+        background: rgba(20, 23, 28, 0.6);
+        color: #e8ecf1;
+        font: 600 14px ui-monospace, monospace;
+        pointer-events: none;
+      }
       .win-buttons {
         display: flex;
         gap: 10px;
@@ -249,11 +286,11 @@
       .win-buttons .win-next {
         background: linear-gradient(180deg, #2f7fd6, #2565ad);
       }
-      .play-back-button {
+      .play-back-button,
+      .play-restart-button {
         position: absolute;
         top: max(16px, env(safe-area-inset-top, 0px));
         left: 50%;
-        transform: translateX(-50%);
         padding: 8px 16px;
         border: 2px solid rgba(255, 255, 255, 0.25);
         border-radius: 20px;
@@ -263,6 +300,39 @@
           600 14px system-ui,
           sans-serif;
         cursor: pointer;
+      }
+      .play-back-button {
+        transform: translateX(calc(-50% + 62px));
+      }
+      .play-restart-button {
+        transform: translateX(calc(-50% - 62px));
+      }
+      .play-banner {
+        position: absolute;
+        top: max(70px, calc(env(safe-area-inset-top, 0px) + 54px));
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        padding: 12px 22px;
+        border-radius: 14px;
+        background: rgba(20, 23, 28, 0.85);
+        border: 2px solid rgba(255, 255, 255, 0.14);
+        pointer-events: none;
+        max-width: calc(100vw - 24px);
+        text-align: center;
+      }
+      .play-banner-goal {
+        margin: 0;
+        color: #ffd23f;
+        font: 700 16px system-ui, sans-serif;
+      }
+      .play-banner-controls {
+        margin: 0;
+        color: #cdd3da;
+        font: 500 13px system-ui, sans-serif;
       }
 
       /* Level editor. */
@@ -420,23 +490,36 @@
           display: none;
         }
       }
-      .editor-delete {
+      .editor-selection-bar {
         position: absolute;
         bottom: 42px;
         left: 50%;
         transform: translateX(-50%);
         display: none;
-        padding: 9px 16px;
-        border: 2px solid rgba(255, 120, 110, 0.5);
-        border-radius: 10px;
-        background: rgba(120, 34, 28, 0.92);
-        color: #fff;
-        font: 600 13px system-ui, sans-serif;
-        cursor: pointer;
+        gap: 8px;
+        padding: 6px;
+        border-radius: 12px;
+        background: rgba(20, 23, 28, 0.82);
         pointer-events: auto;
       }
-      .editor-delete.visible {
-        display: block;
+      .editor-selection-bar.visible {
+        display: flex;
+      }
+      .editor-selection-bar button {
+        min-width: 44px;
+        min-height: 40px;
+        padding: 6px 12px;
+        border: 2px solid rgba(255, 255, 255, 0.2);
+        border-radius: 10px;
+        background: rgba(50, 55, 62, 0.95);
+        color: #fff;
+        font: 600 16px system-ui, sans-serif;
+        cursor: pointer;
+      }
+      .editor-selection-bar .editor-delete {
+        border-color: rgba(255, 120, 110, 0.5);
+        background: rgba(120, 34, 28, 0.92);
+        font-size: 13px;
       }
       .editor-toast {
         position: absolute;
@@ -453,6 +536,55 @@
       }
       .editor-toast.error {
         background: rgba(178, 48, 40, 0.95);
+      }
+      .editor-exit-dialog {
+        position: absolute;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        background: rgba(10, 12, 15, 0.55);
+        pointer-events: auto;
+      }
+      .editor-exit-dialog.open {
+        display: flex;
+      }
+      .editor-exit-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        padding: 24px 28px;
+        border-radius: 16px;
+        background: linear-gradient(180deg, #24303a, #18222b);
+        border: 2px solid rgba(255, 255, 255, 0.14);
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+        max-width: min(420px, calc(100vw - 32px));
+      }
+      .editor-exit-panel p {
+        margin: 0;
+        color: #fff;
+        font: 600 17px system-ui, sans-serif;
+      }
+      .editor-exit-buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .editor-exit-buttons button {
+        padding: 10px 16px;
+        border: 2px solid rgba(255, 255, 255, 0.2);
+        border-radius: 10px;
+        background: rgba(50, 55, 62, 0.9);
+        color: #fff;
+        font: 600 14px system-ui, sans-serif;
+        cursor: pointer;
+      }
+      .editor-exit-buttons .editor-exit-save {
+        background: linear-gradient(180deg, #2f7fd6, #2565ad);
+      }
+      .editor-exit-buttons .editor-exit-discard {
+        background: rgba(120, 34, 28, 0.92);
+        border-color: rgba(255, 120, 110, 0.5);
       }
       @keyframes editor-toast-fade {
         from {

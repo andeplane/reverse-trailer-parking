@@ -65,7 +65,7 @@ function createReverseOutLevel(): Level {
   };
 }
 
-/** The levels shipped with the game (custom editor levels merge on top from localStorage). */
+/** The levels shipped with the game, easiest first (custom levels merge on top from localStorage). */
 export function builtInLevels(): Level[] {
-  return [createParkingLotLevel(), createReverseOutLevel()];
+  return [createReverseOutLevel(), createParkingLotLevel()];
 }

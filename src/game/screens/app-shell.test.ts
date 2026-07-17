@@ -26,6 +26,7 @@ function fakeRenderer(): Renderer & { syncs: Entity[][]; follows: Vec2[] } {
     follow: (t) => follows.push(t),
     setCamera: () => {},
     screenToWorld: () => ({ x: 0, y: 0 }),
+    worldToScreen: () => ({ x: 0, y: 0 }),
     dispose: () => {},
   };
 }
@@ -131,10 +132,9 @@ describe("createApp", () => {
     expect((controlsRoot.querySelector(".editor-name") as HTMLInputElement).value).toBe("a");
 
     app.showMenu();
-    const confirmSpy = window.confirm;
-    window.confirm = () => true;
-    (controlsRoot.querySelector(".menu-level-delete") as HTMLElement).click();
-    window.confirm = confirmSpy;
+    const del = controlsRoot.querySelector(".menu-level-delete") as HTMLElement;
+    del.click(); // arm the inline confirm
+    del.click(); // confirm
     expect(controlsRoot.querySelectorAll(".menu-level-card")).toHaveLength(2); // mine is gone
   });
 
@@ -151,6 +151,16 @@ describe("createApp", () => {
     expect(names.some((n) => n?.includes("Fresh"))).toBe(true);
   });
 
+  it("gives every new draft a unique default name", () => {
+    const storage = fakeStorage();
+    const { app, controlsRoot } = makeApp(storage);
+    app.openEditor();
+    expect((controlsRoot.querySelector(".editor-name") as HTMLInputElement).value).toBe("New level");
+    (controlsRoot.querySelector(".editor-save") as HTMLElement).click();
+    app.openEditor();
+    expect((controlsRoot.querySelector(".editor-name") as HTMLInputElement).value).toBe("New level 2");
+  });
+
   it("testing an editor draft returns to the editor (not the menu) with the draft intact", () => {
     const { app, controlsRoot } = makeApp();
     app.openEditor();
@@ -162,5 +172,19 @@ describe("createApp", () => {
     (controlsRoot.querySelector(".play-back-button") as HTMLElement).click();
     expect(controlsRoot.querySelector(".editor-screen")).not.toBeNull();
     expect((controlsRoot.querySelector(".editor-name") as HTMLInputElement).value).toBe("Draft under test");
+  });
+
+  it("still guards unsaved changes after a Test round-trip (baseline survives)", () => {
+    const { app, controlsRoot } = makeApp();
+    app.openEditor();
+    const name = controlsRoot.querySelector(".editor-name") as HTMLInputElement;
+    name.value = "Never saved";
+    name.dispatchEvent(new Event("input", { bubbles: true }));
+    (controlsRoot.querySelector(".editor-test") as HTMLElement).click();
+    (controlsRoot.querySelector(".play-back-button") as HTMLElement).click();
+    // Back in the editor: the draft was never persisted, so exiting must still prompt.
+    (controlsRoot.querySelector(".editor-menu") as HTMLElement).click();
+    expect(controlsRoot.querySelector(".editor-exit-dialog.open")).not.toBeNull();
+    expect(controlsRoot.querySelector(".menu-screen")).toBeNull();
   });
 });

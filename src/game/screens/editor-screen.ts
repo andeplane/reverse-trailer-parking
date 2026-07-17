@@ -19,10 +19,13 @@ import {
 import { length, sub } from "../../engine/math/vec2";
 import {
   bayMarkedSides,
+  bayOpeningOffset,
+  bayOpenRotFor,
   cellCenter,
   curbAt,
   CURB_THICKNESS,
   edgeSegment,
+  inBounds,
   nearestEdge,
   sideEdge,
   withCurb,
@@ -31,7 +34,7 @@ import {
   type TileType,
 } from "../level/tile-types";
 import { BAY_LINE_WIDTH, tileGroundTexture } from "../view/tile-decor";
-import { worldToEntities } from "../view/world-view";
+import { worldToLayers } from "../view/world-view";
 import { worldToDebugEntities } from "../view/debug-view";
 import { allCarVariants } from "../vehicle/variants";
 import { findCarVariant, type VariantCatalog } from "../vehicle/vehicle-types";
@@ -119,8 +122,11 @@ export function createEditorScreen(args: {
   controlsRoot: HTMLElement;
   catalog: VariantCatalog;
   initial?: Level;
+  /** Serialized last-persisted state, so the unsaved-changes guard survives a Test ▸ round-trip. */
+  savedState?: string;
   onExitToMenu: () => void;
-  onTest: (level: Level) => void;
+  /** Called with the draft AND the current persisted baseline (thread both back via `initial`/`savedState`). */
+  onTest: (level: Level, savedState: string) => void;
   onSave: (level: Level) => void;
 }): Screen {
   const { renderer, controlsRoot, catalog, onExitToMenu, onTest, onSave } = args;
@@ -140,14 +146,36 @@ export function createEditorScreen(args: {
   fitCamera();
 
   const undoStack: Level[] = [];
+  const redoStack: Level[] = [];
   function pushUndo(): void {
     undoStack.push(level);
     if (undoStack.length > 100) undoStack.shift();
+    redoStack.length = 0; // a new edit invalidates the redo history
+  }
+  function undo(): void {
+    const prev = undoStack.pop();
+    if (!prev) return;
+    redoStack.push(level);
+    level = prev;
+    selection = null;
+    syncTopbar();
+  }
+  function redo(): void {
+    const next = redoStack.pop();
+    if (!next) return;
+    undoStack.push(level);
+    level = next;
+    selection = null;
+    syncTopbar();
   }
 
   // Drag / hover state.
   let dragStart: Vec2 | null = null;
-  let dragMode: "none" | "pan" | "paint" | "curb" | "move" | "rect" = "none";
+  let dragMode: "none" | "pan" | "paint" | "curb" | "move" | "rect" | "pinch" = "none";
+  // Touch: two active pointers pinch-zoom/pan the canvas.
+  const activePointers = new Map<number, { x: number; y: number }>();
+  let pinchLast: { dist: number; mid: { x: number; y: number } } | null = null;
+  let suppressTap = false; // lifting the fingers after a pinch must not place anything
   let curbValue = true; // whether the current curb drag paints or erases
   let lastClient: { x: number; y: number } | null = null;
   let spaceHeld = false;
@@ -178,7 +206,7 @@ export function createEditorScreen(args: {
   topbar.className = "editor-topbar";
   const hints = document.createElement("div");
   hints.className = "editor-hints";
-  hints.textContent = "Q pick/copy · R rotate · ⌫ delete car · ⌘Z undo · Space-drag pan · wheel zoom";
+  hints.textContent = "Q pick/copy · R rotate · ⌫ delete car · ⌘Z undo · ⇧⌘Z redo · Space-drag pan · wheel zoom";
   root.append(capture, palette, topbar, hints);
   controlsRoot.appendChild(root);
 
@@ -256,13 +284,29 @@ export function createEditorScreen(args: {
   toolEls.push(selectBtn);
   markActive(toolEls[1]!); // grass brush active by default
 
-  // Contextual delete button — appears when a placed car is selected.
-  const deleteBtn = document.createElement("button");
-  deleteBtn.type = "button";
-  deleteBtn.className = "editor-delete";
-  deleteBtn.textContent = "🗑 Delete car (⌫)";
-  deleteBtn.addEventListener("click", () => deleteSelection());
-  root.appendChild(deleteBtn);
+  // Contextual selection toolbar — rotate/delete without a keyboard (touch-friendly).
+  const selectionBar = document.createElement("div");
+  selectionBar.className = "editor-selection-bar";
+  function selectionButton(label: string, className: string, title: string, onClick: () => void): HTMLButtonElement {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = className;
+    b.textContent = label;
+    b.title = title;
+    b.addEventListener("click", onClick);
+    selectionBar.appendChild(b);
+    return b;
+  }
+  selectionButton("⟲", "editor-rotate-ccw", "Rotate 30° counter-clockwise", () => {
+    pushUndo();
+    rotateSelection((Math.PI / 6) as Radians);
+  });
+  selectionButton("⟳", "editor-rotate-cw", "Rotate 30° clockwise (R)", () => {
+    pushUndo();
+    rotateSelection(CAR_ROTATE_STEP);
+  });
+  const deleteBtn = selectionButton("🗑 Delete", "editor-delete", "Delete this car (⌫)", () => deleteSelection());
+  root.appendChild(selectionBar);
 
   // --- Topbar ------------------------------------------------------------
   const nameInput = document.createElement("input");
@@ -271,6 +315,7 @@ export function createEditorScreen(args: {
   nameInput.placeholder = "Level name";
   nameInput.maxLength = 40;
   nameInput.value = level.name;
+  nameInput.addEventListener("focus", () => nameInput.select()); // one keystroke to rename
   nameInput.addEventListener("input", () => {
     level = { ...level, name: nameInput.value };
   });
@@ -329,18 +374,75 @@ export function createEditorScreen(args: {
   });
   topButton("＋", "editor-zoom", () => (camera.zoom *= 1.2));
   topButton("－", "editor-zoom", () => (camera.zoom /= 1.2));
-  topButton("Test ▸", "editor-test", () => onTest(level));
-  topButton("Save", "editor-save", () => {
+  const fitBtn = topButton("⛶", "editor-zoom editor-fit", () => fitCamera());
+  fitBtn.title = "Fit the whole map in view";
+  topButton("Test ▸", "editor-test", () => onTest(level, savedJson));
+
+  // Dirty tracking: leaving the editor must NEVER silently lose work. The baseline is the
+  // last-persisted state — threaded through Test ▸ round-trips via args.savedState.
+  let savedJson = args.savedState ?? JSON.stringify(level);
+  function isDirty(): boolean {
+    return JSON.stringify(level) !== savedJson;
+  }
+  function trySave(): boolean {
     try {
       validateLevel(level, catalog);
     } catch (error) {
       toast(error instanceof Error ? error.message : String(error), true);
-      return;
+      return false;
     }
     onSave(level);
+    savedJson = JSON.stringify(level);
     toast(`Saved “${level.name}” ✓`);
+    return true;
+  }
+  topButton("Save", "editor-save", () => void trySave());
+  topButton("☰ Menu", "editor-menu", () => {
+    if (isDirty()) showExitDialog();
+    else onExitToMenu();
   });
-  topButton("☰ Menu", "editor-menu", () => onExitToMenu());
+
+  // In-app unsaved-changes dialog (never a native browser popup).
+  const exitDialog = document.createElement("div");
+  exitDialog.className = "editor-exit-dialog";
+  const exitPanel = document.createElement("div");
+  exitPanel.className = "editor-exit-panel";
+  const exitMessage = document.createElement("p");
+  exitPanel.appendChild(exitMessage);
+  const exitButtons = document.createElement("div");
+  exitButtons.className = "editor-exit-buttons";
+  function exitDialogButton(label: string, className: string, onClick: () => void): void {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = className;
+    b.textContent = label;
+    b.addEventListener("click", onClick);
+    exitButtons.appendChild(b);
+  }
+  exitDialogButton("Save & exit", "editor-exit-save", () => {
+    if (trySave()) {
+      hideExitDialog();
+      onExitToMenu();
+    }
+  });
+  exitDialogButton("Discard changes", "editor-exit-discard", () => {
+    hideExitDialog();
+    onExitToMenu();
+  });
+  exitDialogButton("Cancel", "editor-exit-cancel", () => hideExitDialog());
+  exitPanel.appendChild(exitButtons);
+  exitDialog.appendChild(exitPanel);
+  exitDialog.addEventListener("click", (e) => {
+    if (e.target === exitDialog) hideExitDialog(); // clicking the backdrop cancels
+  });
+  root.appendChild(exitDialog);
+  function showExitDialog(): void {
+    exitMessage.textContent = `Save changes to “${level.name || "this level"}”?`;
+    exitDialog.classList.add("open");
+  }
+  function hideExitDialog(): void {
+    exitDialog.classList.remove("open");
+  }
 
   // --- Pointer handling --------------------------------------------------
   function worldAt(clientX: number, clientY: number): Vec2 {
@@ -354,6 +456,13 @@ export function createEditorScreen(args: {
     if (painted.has(key)) return;
     painted.add(key);
     level = { ...level, grid: withTile(level.grid, cell.col, cell.row, { type: tool.tile, rot: brushRot }) };
+    if (tool.tile === "bay") {
+      // A bay is closed end + entrance: paint the full pair in one stroke.
+      const { dc, dr } = bayOpeningOffset(brushRot);
+      const open = { col: cell.col + dc, row: cell.row + dr };
+      painted.add(`${open.col},${open.row}`); // don't overwrite it later in the same stroke
+      level = { ...level, grid: withTile(level.grid, open.col, open.row, { type: "bay-open", rot: bayOpenRotFor(brushRot) }) };
+    }
   }
 
   function paintCurb(p: Vec2, prefer?: "h" | "v"): void {
@@ -365,9 +474,26 @@ export function createEditorScreen(args: {
     level = { ...level, grid: withCurb(level.grid, edge, curbValue) };
   }
 
+  function pinchState(): { dist: number; mid: { x: number; y: number } } | null {
+    if (activePointers.size < 2) return null;
+    const [a, b] = [...activePointers.values()];
+    return {
+      dist: Math.max(Math.hypot(b!.x - a!.x, b!.y - a!.y), 1),
+      mid: { x: (a!.x + b!.x) / 2, y: (a!.y + b!.y) / 2 },
+    };
+  }
+
   function onPointerDown(e: Event): void {
     const pe = e as PointerEvent;
     pe.preventDefault();
+    activePointers.set(pe.pointerId, { x: pe.clientX, y: pe.clientY });
+    suppressTap = false;
+    if (activePointers.size >= 2) {
+      // Second finger down: whatever drag was in progress becomes a pinch zoom/pan.
+      dragMode = "pinch";
+      pinchLast = pinchState();
+      return;
+    }
     const p = worldAt(pe.clientX, pe.clientY);
     dragStart = p;
     lastClient = { x: pe.clientX, y: pe.clientY };
@@ -398,6 +524,18 @@ export function createEditorScreen(args: {
 
   function onPointerMove(e: Event): void {
     const pe = e as PointerEvent;
+    if (activePointers.has(pe.pointerId)) activePointers.set(pe.pointerId, { x: pe.clientX, y: pe.clientY });
+    if (dragMode === "pinch") {
+      const now = pinchState();
+      if (now && pinchLast) {
+        camera.zoom = Math.min(8, Math.max(0.1, camera.zoom * (now.dist / pinchLast.dist)));
+        const dx = (now.mid.x - pinchLast.mid.x) / (PIXELS_PER_METRE * camera.zoom);
+        const dy = (now.mid.y - pinchLast.mid.y) / (PIXELS_PER_METRE * camera.zoom);
+        camera.center = { x: camera.center.x - dx, y: camera.center.y + dy };
+        pinchLast = now;
+      }
+      return;
+    }
     hover = worldAt(pe.clientX, pe.clientY);
     if (dragMode === "pan" && lastClient) {
       const dx = (pe.clientX - lastClient.x) / (PIXELS_PER_METRE * camera.zoom);
@@ -421,10 +559,19 @@ export function createEditorScreen(args: {
 
   function onPointerUp(e: Event): void {
     const pe = e as PointerEvent;
+    activePointers.delete(pe.pointerId);
+    if (dragMode === "pinch") {
+      if (activePointers.size < 2) {
+        dragMode = "none";
+        pinchLast = null;
+        suppressTap = true; // don't treat the finger lift as a tap/placement
+      }
+      return;
+    }
     const p = worldAt(pe.clientX, pe.clientY);
     const start = dragStart ?? p;
 
-    if (dragMode === "none" && tool.kind === "car") placeCar(p);
+    if (dragMode === "none" && !suppressTap && tool.kind === "car") placeCar(p);
     else if (tool.kind === "exit" && dragMode === "rect") {
       pushUndo();
       // A drag sets a custom-width gate; a click drops a standard-width gate at the nearest edge.
@@ -455,15 +602,20 @@ export function createEditorScreen(args: {
     if (e.key === " ") spaceHeld = true;
     if ((e.metaKey || e.ctrlKey) && (e.key === "z" || e.key === "Z")) {
       e.preventDefault();
-      const prev = undoStack.pop();
-      if (prev) {
-        level = prev;
-        selection = null;
-        syncTopbar();
-      }
+      if (e.shiftKey) redo();
+      else undo();
+      return;
+    }
+    if ((e.metaKey || e.ctrlKey) && (e.key === "y" || e.key === "Y")) {
+      e.preventDefault();
+      redo();
       return;
     }
     if (e.key === "Escape") {
+      if (exitDialog.classList.contains("open")) {
+        hideExitDialog();
+        return;
+      }
       selection = null;
       dragMode = "none";
       carFlyout.classList.remove("open");
@@ -485,9 +637,18 @@ export function createEditorScreen(args: {
     if (e.key === " ") spaceHeld = false;
   }
 
+  function onPointerCancel(e: Event): void {
+    activePointers.delete((e as PointerEvent).pointerId);
+    if (activePointers.size < 2 && dragMode === "pinch") {
+      dragMode = "none";
+      pinchLast = null;
+    }
+  }
+
   capture.addEventListener("pointerdown", onPointerDown);
   capture.addEventListener("pointermove", onPointerMove);
   capture.addEventListener("pointerup", onPointerUp);
+  capture.addEventListener("pointercancel", onPointerCancel);
   capture.addEventListener("wheel", onWheel, { passive: false });
   capture.addEventListener("contextmenu", onContextMenu);
   window.addEventListener("keydown", onKeyDown);
@@ -618,15 +779,25 @@ export function createEditorScreen(args: {
     return tool.kind === "paint" && tool.tile === pick.tile && brushRot === pick.rot;
   }
 
-  /** A ghost of what the current tool will place at the cursor, outlined green (valid) / red. */
-  function previewEntities(): Entity[] {
-    if (!hover || (dragMode !== "none" && dragMode !== "paint" && dragMode !== "curb")) return [];
+  /**
+   * A ghost of what the current tool will place at the cursor, outlined green (valid) / red.
+   * Ghosts are slotted at the depth their real entity will occupy: a tile ghost sits above the
+   * existing tiles but BELOW vehicles, a car ghost at vehicle depth, indicators on top of all.
+   */
+  interface PreviewLayers {
+    ground: Entity[];
+    vehicles: Entity[];
+    overlay: Entity[];
+  }
+  function previewEntities(): PreviewLayers {
+    const none: PreviewLayers = { ground: [], vehicles: [], overlay: [] };
+    if (!hover || (dragMode !== "none" && dragMode !== "paint" && dragMode !== "curb")) return none;
     if (tool.kind === "paint") {
       const cell = worldToCell(level.grid, hover);
-      if (!cell) return [];
+      if (!cell) return none;
       const center = cellCenter(level.grid, cell.col, cell.row);
       const size = level.grid.tileSize as Metres;
-      const out: Entity[] = [
+      const ground: Entity[] = [
         {
           id: "editor:preview:tile",
           position: center,
@@ -635,8 +806,10 @@ export function createEditorScreen(args: {
           visual: { kind: "sprite", texture: tileGroundTexture(tool.tile) },
         },
       ];
+      const overlay: Entity[] = [];
       if (tool.tile === "tree") {
-        out.push({
+        // Canopy draws above vehicles when placed, so its ghost does too.
+        overlay.push({
           id: "editor:preview:canopy",
           position: center,
           rotation: 0 as Radians,
@@ -644,69 +817,122 @@ export function createEditorScreen(args: {
           visual: { kind: "sprite", texture: "tile-tree" },
         });
       }
-      out.push(outlineEntity("editor:preview:box", center, 0 as Radians, size, size, 0x39ff14));
-      // Bay tiles preview their painted lines ON TOP of the outline so the opening side reads clearly.
-      bayMarkedSides(tool.tile, brushRot).forEach((side, i) => {
-        const { a, b } = edgeSegment(level.grid, sideEdge(cell.col, cell.row, side));
-        out.push(stripEntity(`editor:preview:line:${i}`, a, b, BAY_LINE_WIDTH, 0xffffff, 1));
+      const lineSides: { col: number; row: number; sides: ReturnType<typeof bayMarkedSides> }[] = [
+        { col: cell.col, row: cell.row, sides: bayMarkedSides(tool.tile, brushRot) },
+      ];
+      // The bay brush paints the whole 2-tile bay, so its ghost shows both cells.
+      const { dc, dr } = bayOpeningOffset(brushRot);
+      const openCell = { col: cell.col + dc, row: cell.row + dr };
+      const hasOpenCell = tool.tile === "bay" && inBounds(level.grid, openCell.col, openCell.row);
+      if (hasOpenCell) {
+        const openCenter = cellCenter(level.grid, openCell.col, openCell.row);
+        ground.push({
+          id: "editor:preview:tile2",
+          position: openCenter,
+          rotation: 0 as Radians,
+          size: { width: size, length: size },
+          visual: { kind: "sprite", texture: tileGroundTexture("bay-open") },
+        });
+        lineSides.push({ ...openCell, sides: bayMarkedSides("bay-open", bayOpenRotFor(brushRot)) });
+        const mid = { x: (center.x + openCenter.x) / 2, y: (center.y + openCenter.y) / 2 };
+        const isVertical = dc === 0;
+        overlay.push(
+          outlineEntity(
+            "editor:preview:box",
+            mid,
+            0 as Radians,
+            (isVertical ? size * 2 : size) as Metres,
+            (isVertical ? size : size * 2) as Metres,
+            0x39ff14,
+          ),
+        );
+      } else {
+        overlay.push(outlineEntity("editor:preview:box", center, 0 as Radians, size, size, 0x39ff14));
+      }
+      // Painted bay lines draw on top of the outline so the opening side reads clearly.
+      lineSides.forEach(({ col, row, sides }, cellIndex) => {
+        sides.forEach((side, i) => {
+          const { a, b } = edgeSegment(level.grid, sideEdge(col, row, side));
+          overlay.push(stripEntity(`editor:preview:line:${cellIndex}:${i}`, a, b, BAY_LINE_WIDTH, 0xffffff, 1));
+        });
       });
-      return out;
+      return { ground, vehicles: [], overlay };
     }
     if (tool.kind === "curb") {
       const edge = nearestEdge(level.grid, hover);
-      if (!edge) return [];
+      if (!edge) return none;
       const { a, b } = edgeSegment(level.grid, edge);
       const erases = dragMode === "curb" ? !curbValue : curbAt(level.grid, edge);
-      return [stripEntity("editor:preview:curb", a, b, CURB_THICKNESS as Metres, erases ? 0xff3b30 : 0x39ff14, 0.6)];
+      return {
+        ...none,
+        overlay: [stripEntity("editor:preview:curb", a, b, CURB_THICKNESS as Metres, erases ? 0xff3b30 : 0x39ff14, 0.6)],
+      };
     }
     if (tool.kind === "car") {
       const candidate = carBrushCandidate(hover);
       const obb = levelCarObb(candidate, catalog);
       const ok = !carOverlaps(level, candidate, catalog);
       const variant = findCarVariant(catalog, candidate.variantId);
-      return [
-        {
-          id: "editor:preview:car",
-          position: obb.center,
-          rotation: obb.rotation,
-          size: { width: variant.bodyWidth, length: variant.bodyLength },
-          visual: { kind: "sprite", texture: variant.texture },
-        },
-        outlineEntity("editor:preview:box", obb.center, obb.rotation, (obb.halfW * 2) as Metres, (obb.halfL * 2) as Metres, ok ? 0x39ff14 : 0xff3b30),
-      ];
+      return {
+        ground: [],
+        vehicles: [
+          {
+            id: "editor:preview:car",
+            position: obb.center,
+            rotation: obb.rotation,
+            size: { width: variant.bodyWidth, length: variant.bodyLength },
+            visual: { kind: "sprite", texture: variant.texture },
+          },
+        ],
+        overlay: [
+          outlineEntity("editor:preview:box", obb.center, obb.rotation, (obb.halfW * 2) as Metres, (obb.halfL * 2) as Metres, ok ? 0x39ff14 : 0xff3b30),
+        ],
+      };
     }
     if (tool.kind === "exit") {
       const gate = exitGateAt(hover, level.grid);
       const seg = sub(gate.b, gate.a);
       const len = Math.max(length(seg), 0.1) as Metres;
       const mid = { x: (gate.a.x + gate.b.x) / 2, y: (gate.a.y + gate.b.y) / 2 };
-      return [
-        {
-          id: "editor:preview:exit",
-          position: mid,
-          rotation: Math.atan2(seg.y, seg.x) as Radians,
-          size: { width: 0.7 as Metres, length: len },
-          visual: {
-            kind: "rect",
-            style: { fillColor: 0xffd23f, fillAlpha: 0.55, strokeColor: 0x39ff14, strokeWidth: 0.16 as Metres, cornerRadius: 0.1 as Metres },
+      return {
+        ...none,
+        overlay: [
+          {
+            id: "editor:preview:exit",
+            position: mid,
+            rotation: Math.atan2(seg.y, seg.x) as Radians,
+            size: { width: 0.7 as Metres, length: len },
+            visual: {
+              kind: "rect",
+              style: { fillColor: 0xffd23f, fillAlpha: 0.55, strokeColor: 0x39ff14, strokeWidth: 0.16 as Metres, cornerRadius: 0.1 as Metres },
+            },
           },
-        },
-      ];
+        ],
+      };
     }
-    return [];
+    return none;
   }
 
   return {
     tick(): void {
       renderer.setCamera(camera.center, camera.zoom);
       const world = levelToWorld(level, catalog);
-      const entities = worldToEntities(world, catalog);
-      const extra: Entity[] = [];
-      if (debug) extra.push(...worldToDebugEntities(world, catalog));
-      if (selection) extra.push(selectionEntity(level, selection, catalog));
-      extra.push(...previewEntities());
-      deleteBtn.classList.toggle("visible", selection?.kind === "placed");
-      renderer.sync([...entities, ...extra]);
+      const layers = worldToLayers(world, catalog);
+      const preview = previewEntities();
+      const top: Entity[] = [];
+      if (debug) top.push(...worldToDebugEntities(world, catalog));
+      if (selection) top.push(selectionEntity(level, selection, catalog));
+      selectionBar.classList.toggle("visible", selection !== null);
+      deleteBtn.style.display = selection?.kind === "placed" ? "" : "none"; // the rig can't be deleted
+      renderer.sync([
+        ...layers.ground,
+        ...preview.ground,
+        ...layers.vehicles,
+        ...preview.vehicles,
+        ...layers.canopy,
+        ...top,
+        ...preview.overlay,
+      ]);
     },
     dispose(): void {
       window.removeEventListener("keydown", onKeyDown);

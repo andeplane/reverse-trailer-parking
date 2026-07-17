@@ -250,6 +250,22 @@ export function bayMarkedSides(type: TileType, rot: number): TileSide[] {
   return [];
 }
 
+/** Grid offset (Δcol, Δrow) of the cell a bay's opening faces (rot 0 opens south = row+1). */
+export function bayOpeningOffset(rot: number): { dc: number; dr: number } {
+  const r = ((rot % 4) + 4) % 4;
+  return [
+    { dc: 0, dr: 1 },
+    { dc: 1, dr: 0 },
+    { dc: 0, dr: -1 },
+    { dc: -1, dr: 0 },
+  ][r]!;
+}
+
+/** The `bay-open` rot whose flank lines continue a bay of the given rot. */
+export function bayOpenRotFor(bayRot: number): number {
+  return ((bayRot % 4) + 4) % 4 % 2 === 0 ? 0 : 1;
+}
+
 /** The cell edge on a given side of cell (col,row). */
 export function sideEdge(col: number, row: number, side: TileSide): EdgeRef {
   switch (side) {

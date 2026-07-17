@@ -23,6 +23,7 @@ function fakeRenderer(): Renderer {
     follow: () => {},
     setCamera: () => {},
     screenToWorld: () => ({ x: 0, y: 0 }),
+    worldToScreen: () => ({ x: 0, y: 0 }),
     dispose: () => {},
   };
 }
@@ -37,6 +38,7 @@ function level(exit: Level["exit"]): Level {
     drivable: { variantId: "sedan", position: { x: 0, y: 0 }, heading: 0, trailerVariantId: "caravan" },
     placedCars: [],
     exit,
+    parSeconds: 60,
   };
 }
 
@@ -60,10 +62,25 @@ function mount(lvl: Level, onExitToMenu = () => {}, onNextLevel?: () => void) {
 }
 
 describe("createPlayScreen", () => {
-  it("mounts a steering indicator and a back-to-menu button", () => {
+  it("mounts a steering indicator, back-to-menu and restart buttons, and a goal banner", () => {
     const { controlsRoot } = mount(level({ a: { x: 30, y: -3 }, b: { x: 30, y: 3 }, outward: { x: 1, y: 0 } }));
     expect(controlsRoot.querySelector("#steering-indicator")).not.toBeNull();
     expect(controlsRoot.querySelector(".play-back-button")).not.toBeNull();
+    expect(controlsRoot.querySelector(".play-restart-button")).not.toBeNull();
+    expect(controlsRoot.querySelector(".play-banner")?.textContent).toContain("yellow gate");
+  });
+
+  it("shows a run timer with par, and the final time on the win overlay", () => {
+    const won = mount(level({ a: { x: 5, y: -30 }, b: { x: 5, y: 30 }, outward: { x: -1, y: 0 } }));
+    expect(won.controlsRoot.querySelector(".play-timer")?.textContent).toContain("par 1:00");
+    won.screen.tick(1000 / 60);
+    expect(won.controlsRoot.querySelector(".win-time")?.textContent).toMatch(/^Time \d+:\d\d · par 1:00$/);
+  });
+
+  it("dismisses the goal banner on the first input", () => {
+    const { controlsRoot } = mount(level({ a: { x: 30, y: -3 }, b: { x: 30, y: 3 }, outward: { x: 1, y: 0 } }));
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp" }));
+    expect(controlsRoot.querySelector(".play-banner")).toBeNull();
   });
 
   it("does not win while the rig is still short of the exit", () => {

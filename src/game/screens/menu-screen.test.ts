@@ -22,10 +22,10 @@ function mount(
   levels: Level[],
   hooks: {
     customIds?: ReadonlySet<string>;
+    bundledIds?: ReadonlySet<string>;
     onPlay?: (l: Level) => void;
     onEdit?: (l?: Level) => void;
     onDelete?: (l: Level) => void;
-    confirmDelete?: (l: Level) => boolean;
   } = {},
 ) {
   parent = document.createElement("div");
@@ -36,8 +36,8 @@ function mount(
     onPlay: hooks.onPlay ?? (() => {}),
     onEdit: hooks.onEdit ?? (() => {}),
     ...(hooks.customIds ? { customIds: hooks.customIds } : {}),
+    ...(hooks.bundledIds ? { bundledIds: hooks.bundledIds } : {}),
     ...(hooks.onDelete ? { onDelete: hooks.onDelete } : {}),
-    ...(hooks.confirmDelete ? { confirmDelete: hooks.confirmDelete } : {}),
   });
   return { screen, parent };
 }
@@ -74,29 +74,49 @@ describe("createMenuScreen", () => {
     expect(edited).toEqual(lv);
   });
 
-  it("offers delete (behind a confirm) only for custom levels", () => {
+  it("deletes only after the inline two-step confirm (🗑 → Sure? → click), custom levels only", () => {
     const deleted: string[] = [];
     const { parent } = mount([level("built", "Built-in"), level("mine", "Mine")], {
       customIds: new Set(["mine"]),
       onDelete: (l) => deleted.push(l.id),
-      confirmDelete: () => true,
     });
     const deletes = parent.querySelectorAll(".menu-level-delete");
     expect(deletes).toHaveLength(1); // built-in levels can't be deleted
-    (deletes[0] as HTMLElement).click();
+    const del = deletes[0] as HTMLElement;
+    del.click(); // first click only arms the button — no native popups, ever
+    expect(deleted).toEqual([]);
+    expect(del.textContent).toBe("Sure?");
+    expect(del.classList.contains("confirm")).toBe(true);
+    del.click(); // second click deletes
     expect(deleted).toEqual(["mine"]);
     expect(parent.querySelector(".menu-level-badge")?.textContent).toBe("custom");
   });
 
-  it("does not delete when the confirmation is declined", () => {
+  it("disarms the delete confirm when clicking anywhere else", () => {
     const deleted: string[] = [];
     const { parent } = mount([level("mine", "Mine")], {
       customIds: new Set(["mine"]),
       onDelete: (l) => deleted.push(l.id),
-      confirmDelete: () => false,
     });
-    (parent.querySelector(".menu-level-delete") as HTMLElement).click();
+    const del = parent.querySelector(".menu-level-delete") as HTMLElement;
+    del.click();
+    expect(del.textContent).toBe("Sure?");
+    document.body.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
+    expect(del.textContent).toBe("🗑");
+    del.click(); // armed again, but still no delete without the second click
     expect(deleted).toEqual([]);
+  });
+
+  it("marks an overridden built-in as 'modified' with a restore (↺) action", () => {
+    const { parent } = mount([level("built", "Built-in")], {
+      customIds: new Set(["built"]),
+      bundledIds: new Set(["built"]),
+      onDelete: () => {},
+    });
+    expect(parent.querySelector(".menu-level-badge")?.textContent).toBe("modified");
+    const del = parent.querySelector(".menu-level-delete") as HTMLElement;
+    expect(del.textContent).toBe("↺");
+    expect(del.title).toContain("restores the original");
   });
 
   it("removes its DOM on dispose", () => {

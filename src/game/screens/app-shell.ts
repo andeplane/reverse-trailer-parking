@@ -1,5 +1,6 @@
 import type { Clock } from "../../engine/loop/clock";
 import type { Renderer } from "../../engine/render/renderer";
+import { emptyLevel } from "../level/editor-model";
 import type { Level } from "../level/level-types";
 import { deleteCustomLevel, loadCustomLevels, mergeLevels, saveCustomLevel, type LevelStorage } from "../level/level-store";
 import type { VariantCatalog } from "../vehicle/vehicle-types";
@@ -50,6 +51,18 @@ export function createApp(args: {
   function saveLevel(level: Level): void {
     if (storage) saveCustomLevel(level, storage);
   }
+
+  /** "New level", "New level 2", … — never two identical default names in the menu. */
+  function uniqueDraftName(): string {
+    const names = new Set(allLevels().map((l) => l.name));
+    if (!names.has("New level")) return "New level";
+    let n = 2;
+    while (names.has(`New level ${n}`)) n++;
+    return `New level ${n}`;
+  }
+  function newDraft(): Level {
+    return { ...emptyLevel(`custom-${Date.now().toString(36)}`), name: uniqueDraftName() };
+  }
   function deleteLevel(level: Level): void {
     if (storage) deleteCustomLevel(level.id, storage);
     app.showMenu(); // re-list (a deleted override reveals its bundled original again)
@@ -65,8 +78,9 @@ export function createApp(args: {
     active = next;
   }
 
-  /** Play an editor draft; leaving the run returns to the editor with the draft intact. */
-  function testDraft(draft: Level): void {
+  /** Play an editor draft; leaving the run returns to the editor with the draft AND its
+   * unsaved-changes baseline intact (so exiting afterwards still prompts to save). */
+  function testDraft(draft: Level, savedState: string): void {
     swap(
       createPlayScreen({
         clock,
@@ -74,8 +88,24 @@ export function createApp(args: {
         controlsRoot,
         level: draft,
         catalog,
-        onExitToMenu: () => app.openEditor(draft),
+        onExitToMenu: () => openEditorScreen(draft, savedState),
         ...(isTouch !== undefined ? { isTouch } : {}),
+      }),
+    );
+  }
+
+  function openEditorScreen(initial: Level, savedState?: string): void {
+    clearWorld();
+    swap(
+      createEditorScreen({
+        renderer,
+        controlsRoot,
+        catalog,
+        initial,
+        ...(savedState !== undefined ? { savedState } : {}),
+        onExitToMenu: () => app.showMenu(),
+        onTest: (draft, baseline) => testDraft(draft, baseline),
+        onSave: (level) => saveLevel(level),
       }),
     );
   }
@@ -92,6 +122,7 @@ export function createApp(args: {
           parent: controlsRoot,
           levels,
           customIds: new Set(customLevels().map((l) => l.id)),
+          bundledIds: new Set(bundled.map((l) => l.id)),
           onPlay: (level) => app.playLevel(level),
           onEdit: (level?: Level) => app.openEditor(level),
           onDelete: (level) => deleteLevel(level),
@@ -111,23 +142,13 @@ export function createApp(args: {
           catalog,
           onExitToMenu: () => app.showMenu(),
           ...(next ? { onNextLevel: () => app.playLevel(next) } : {}),
+          isLastLevel: index >= 0 && !next,
           ...(isTouch !== undefined ? { isTouch } : {}),
         }),
       );
     },
     openEditor(initial?: Level): void {
-      clearWorld();
-      swap(
-        createEditorScreen({
-          renderer,
-          controlsRoot,
-          catalog,
-          ...(initial ? { initial } : {}),
-          onExitToMenu: () => app.showMenu(),
-          onTest: (draft) => testDraft(draft),
-          onSave: (level) => saveLevel(level),
-        }),
-      );
+      openEditorScreen(initial ?? newDraft());
     },
     dispose(): void {
       active?.dispose();

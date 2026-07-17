@@ -35,9 +35,11 @@ export function createPlayScreen(args: {
   catalog: VariantCatalog;
   onExitToMenu: () => void;
   onNextLevel?: () => void;
+  /** True when this is the last level in the list (win overlay celebrates finishing everything). */
+  isLastLevel?: boolean;
   isTouch?: boolean;
 }): Screen {
-  const { clock, renderer, controlsRoot, level, catalog, onExitToMenu, onNextLevel } = args;
+  const { clock, renderer, controlsRoot, level, catalog, onExitToMenu, onNextLevel, isLastLevel } = args;
   const isTouch =
     args.isTouch ?? (window.matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0);
 
@@ -48,7 +50,31 @@ export function createPlayScreen(args: {
   const steeringEl = makeSteeringIndicator(controlsRoot);
 
   const sandboxRef: { current?: Sandbox } = {};
-  const reset = (): void => sandboxRef.current?.reset();
+  let runStart = clock.now();
+  const reset = (): void => {
+    sandboxRef.current?.reset();
+    runStart = clock.now();
+  };
+
+  function formatTime(seconds: number): string {
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m}:${String(s).padStart(2, "0")}`;
+  }
+  const timerEl = document.createElement("div");
+  timerEl.className = "play-timer";
+  controlsRoot.appendChild(timerEl);
+  function elapsedSeconds(): number {
+    return (clock.now() - runStart) / 1000;
+  }
+  function updateTimer(): void {
+    const text =
+      level.parSeconds !== undefined
+        ? `${formatTime(elapsedSeconds())} · par ${formatTime(level.parSeconds)}`
+        : formatTime(elapsedSeconds());
+    if (timerEl.textContent !== text) timerEl.textContent = text;
+  }
+  updateTimer();
 
   const disposers: Array<() => void> = [];
   let input: InputSource;
@@ -68,8 +94,58 @@ export function createPlayScreen(args: {
   backButton.addEventListener("click", onExitToMenu);
   controlsRoot.appendChild(backButton);
 
+  const restartButton = document.createElement("button");
+  restartButton.type = "button";
+  restartButton.className = "play-restart-button";
+  restartButton.textContent = "↺ Restart";
+  restartButton.addEventListener("click", reset);
+  controlsRoot.appendChild(restartButton);
+
+  // First-time guidance: state the goal + controls, dismissed by the first input (or 8s).
+  const banner = document.createElement("div");
+  banner.className = "play-banner";
+  const goal = document.createElement("p");
+  goal.className = "play-banner-goal";
+  goal.textContent = "Back the trailer out through the yellow gate";
+  const how = document.createElement("p");
+  how.className = "play-banner-controls";
+  how.textContent = isTouch ? "Pedals drive · right slider steers" : "↑ ↓ drive · ← → steer · R restarts";
+  banner.append(goal, how);
+  controlsRoot.appendChild(banner);
+  const dismissBanner = (): void => {
+    banner.remove();
+    window.removeEventListener("keydown", dismissBanner);
+    window.removeEventListener("pointerdown", dismissBanner);
+  };
+  window.addEventListener("keydown", dismissBanner);
+  window.addEventListener("pointerdown", dismissBanner);
+  const bannerTimer = setTimeout(dismissBanner, 8000);
+
   const sandbox = createSandbox({ clock, input, renderer, world, steeringEl });
   sandboxRef.current = sandbox;
+
+  // Screen-edge arrow pointing at the exit when the follow-camera has it off-screen.
+  const exitArrow = document.createElement("div");
+  exitArrow.className = "play-exit-arrow";
+  exitArrow.textContent = "➤";
+  controlsRoot.appendChild(exitArrow);
+  function updateExitArrow(): void {
+    const exit = world.exit;
+    if (!exit) return;
+    const mid = renderer.worldToScreen({ x: (exit.a.x + exit.b.x) / 2, y: (exit.a.y + exit.b.y) / 2 });
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const offScreen = mid.x < 0 || mid.x > vw || mid.y < 0 || mid.y > vh;
+    exitArrow.classList.toggle("visible", offScreen);
+    if (!offScreen) return;
+    const margin = 30;
+    const x = Math.min(vw - margin, Math.max(margin, mid.x));
+    const y = Math.min(vh - margin, Math.max(margin, mid.y));
+    const angle = Math.atan2(mid.y - y, mid.x - x);
+    exitArrow.style.left = `${x}px`;
+    exitArrow.style.top = `${y}px`;
+    exitArrow.style.transform = `translate(-50%, -50%) rotate(${angle}rad)`;
+  }
 
   // When debug is on, keep the URL in sync with the rig's exact state so it can be copied and
   // pasted back to reproduce the scenario.
@@ -98,9 +174,15 @@ export function createPlayScreen(args: {
     if (!world.exit) return;
     const footprints = rigFootprints(toRig(drivableCar(world)), catalog);
     if (!hasRigCrossedExit(footprints, world.exit)) return;
+    const timeText =
+      level.parSeconds !== undefined
+        ? `Time ${formatTime(elapsedSeconds())} · par ${formatTime(level.parSeconds)}`
+        : `Time ${formatTime(elapsedSeconds())}`;
     winOverlay = createWinOverlay({
       parent: controlsRoot,
       levelName: level.name,
+      timeText,
+      isLastLevel: isLastLevel ?? false,
       ...(onNextLevel ? { onNext: onNextLevel } : {}),
       onRetry: () => {
         winOverlay?.dispose();
@@ -114,7 +196,9 @@ export function createPlayScreen(args: {
   return {
     tick(frameMs?: number): void {
       if (winOverlay) return; // frozen after winning until Retry/Next/Menu
+      updateTimer();
       sandbox.tick(frameMs);
+      updateExitArrow();
       if (sandbox.isDebug() && ++framesSinceUrlWrite >= 20) {
         framesSinceUrlWrite = 0;
         writeDebugUrl();
@@ -123,10 +207,15 @@ export function createPlayScreen(args: {
     },
     dispose(): void {
       window.removeEventListener("keydown", onKeyDown);
+      clearTimeout(bannerTimer);
+      dismissBanner();
       if (sandbox.isDebug()) clearDebugUrl();
       winOverlay?.dispose();
       for (const d of disposers) d();
       backButton.remove();
+      restartButton.remove();
+      timerEl.remove();
+      exitArrow.remove();
       steeringEl.remove();
       sandbox.dispose();
     },

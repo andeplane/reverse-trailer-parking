@@ -37,5 +37,7 @@ export interface Renderer {
   setCamera(center: Vec2, zoom: number): void;
   /** Converts a client (page) pixel position to a world-space point in metres. */
   screenToWorld(clientX: number, clientY: number): Vec2;
+  /** Converts a world-space point (metres) to a client (page) pixel position. */
+  worldToScreen(p: Vec2): { x: number; y: number };
   dispose(): void;
 }

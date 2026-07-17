@@ -106,6 +106,19 @@ export function createPhaserSurface(args: {
         const wp = scene.cameras.main.getWorldPoint(cx, cy);
         return { x: wp.x / PIXELS_PER_METRE, y: -(wp.y / PIXELS_PER_METRE) };
       },
+      worldToClient(x: number, y: number): { x: number; y: number } {
+        if (!scene) return { x: 0, y: 0 };
+        const cam = scene.cameras.main;
+        const canvas = scene.game.canvas;
+        const rect = canvas.getBoundingClientRect();
+        // Inverse of clientToWorld: phaser px → canvas px (via worldView + zoom) → page px.
+        const cx = (x * PIXELS_PER_METRE - cam.worldView.x) * cam.zoom;
+        const cy = (-y * PIXELS_PER_METRE - cam.worldView.y) * cam.zoom;
+        return {
+          x: rect.left + (cx / canvas.width) * rect.width,
+          y: rect.top + (cy / canvas.height) * rect.height,
+        };
+      },
     };
 
     const game = new Phaser.Game({
