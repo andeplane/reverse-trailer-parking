@@ -131,6 +131,36 @@ describe("createPlayScreen", () => {
     expect(controlsRoot.querySelectorAll(".win-overlay").length).toBe(overlays);
   });
 
+  it("mounts a full health bar", () => {
+    const { controlsRoot } = mount(level({ a: { x: 30, y: -3 }, b: { x: 30, y: 3 }, outward: { x: 1, y: 0 } }));
+    expect(controlsRoot.querySelector(".play-health")).not.toBeNull();
+    expect(controlsRoot.querySelector(".play-health-fill")).not.toBeNull();
+  });
+
+  it("shows the lose overlay after wrecking, and Retry restores a fresh run", () => {
+    // Exit gap on the +x wall but far off the drive path, so full throttle ahead hits the wall
+    // head-on at top speed (8 m/s → 256 damage points ≥ 100) instead of escaping through the gate.
+    const { screen, controlsRoot } = mount(
+      level({ a: { x: 30, y: 20 }, b: { x: 30, y: 26 }, outward: { x: 1, y: 0 } }),
+    );
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp" }));
+    for (let i = 0; i < 3000 && !controlsRoot.querySelector(".lose-overlay"); i++) {
+      screen.tick(1000 / 60);
+    }
+    window.dispatchEvent(new KeyboardEvent("keyup", { key: "ArrowUp" }));
+    expect(controlsRoot.querySelector(".lose-overlay .lose-title")?.textContent).toContain("Wrecked");
+    expect(controlsRoot.querySelector(".win-overlay:not(.lose-overlay)")).toBeNull(); // lost, not won
+
+    const fill = controlsRoot.querySelector(".play-health-fill") as HTMLElement;
+    expect(parseFloat(fill.style.width)).toBe(0); // health pool emptied by the crash
+
+    (controlsRoot.querySelector(".lose-overlay .win-retry") as HTMLElement).click();
+    expect(controlsRoot.querySelector(".lose-overlay")).toBeNull();
+    expect(parseFloat(fill.style.width)).toBe(100); // fresh run, full health again
+    screen.tick(1000 / 60); // ticking resumes without the overlay coming back
+    expect(controlsRoot.querySelector(".lose-overlay")).toBeNull();
+  });
+
   it("cleans up DOM on dispose", () => {
     const { screen, controlsRoot } = mount(level({ a: { x: 30, y: -3 }, b: { x: 30, y: 3 }, outward: { x: 1, y: 0 } }));
     screen.dispose();

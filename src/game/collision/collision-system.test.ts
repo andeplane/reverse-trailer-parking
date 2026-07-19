@@ -47,15 +47,17 @@ describe("obstacleFootprints", () => {
         createCarWithTrailer("placed", -10),
       ],
       boundary,
-      solids: [], grid: TILE_GRID, exit: null, bounds: { width: 100, height: 100 }, 
+      solids: [], grid: TILE_GRID, exit: null, bounds: { width: 100, height: 100 },
       catalog,
+      damage: 0,
+      rigInContact: false,
     };
     // placed car (1) + placed car + trailer (2) + boundary (1) = 4
     expect(obstacleFootprints(world)).toHaveLength(4);
   });
 
   it("is empty when there are no placed cars or walls", () => {
-    const world = { cars: [createCar("drivable", 0)], boundary: [], solids: [], grid: TILE_GRID, exit: null, bounds: { width: 100, height: 100 }, catalog };
+    const world = { cars: [createCar("drivable", 0)], boundary: [], solids: [], grid: TILE_GRID, exit: null, bounds: { width: 100, height: 100 }, catalog, damage: 0, rigInContact: false };
     expect(obstacleFootprints(world)).toHaveLength(0);
   });
 });

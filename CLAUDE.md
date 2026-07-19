@@ -28,6 +28,10 @@ machine** in `src/game/screens/` (`AppShell`) over one shared Phaser surface —
   HUD: transient goal/controls banner at start, ↺ Restart + ☰ Menu buttons, a
   run-timer (with par), and a screen-edge ➤ arrow toward the exit when the
   follow-camera has it off-screen (`Renderer.worldToScreen`).
+  **Crash damage** (`vehicle/damage.ts`): each impact charges 4·v² points from
+  the speed into the contact normal, only on the clear→contact edge (grinding =
+  one hit) and never below the 0.5 m/s dead-zone; a HUD health bar drains, and
+  ≥ 100 points shows the lose overlay (`hud/lose-overlay.ts`; win takes precedence).
 - **Editor** (`editor-screen.ts` + pure `editor-model.ts`) — see below.
 - The **app shell owns the bundled/custom split**: `createApp` takes bundled
   levels + a `LevelStorage`; custom levels merge on top by id on every menu

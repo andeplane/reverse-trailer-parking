@@ -269,6 +269,33 @@
         font: 600 14px ui-monospace, monospace;
         pointer-events: none;
       }
+      .play-health {
+        position: absolute;
+        top: max(64px, calc(env(safe-area-inset-top, 0px) + 48px));
+        left: 16px;
+        width: 140px;
+        height: 12px;
+        border-radius: 7px;
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        background: rgba(20, 23, 28, 0.6);
+        overflow: hidden;
+        pointer-events: none;
+      }
+      .play-health-fill {
+        height: 100%;
+        width: 100%;
+        background: linear-gradient(180deg, #7cf29a, #4fd47a);
+        transition: width 0.15s ease-out;
+      }
+      .play-health.warn .play-health-fill {
+        background: linear-gradient(180deg, #ffd23f, #e6b32a);
+      }
+      .play-health.danger .play-health-fill {
+        background: linear-gradient(180deg, #ff6b6b, #e04f4f);
+      }
+      .lose-title {
+        color: #ff6b6b;
+      }
       .win-buttons {
         display: flex;
         gap: 10px;
