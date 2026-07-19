@@ -159,21 +159,50 @@ describe("resolveRigCollision", () => {
     expect(Number.isFinite(result.rig.trailer?.heading ?? 0)).toBe(true);
   });
 
-  it("slides along a wall approached at an angle instead of dead-stopping", () => {
-    // Approach the front wall at a shallow angle: some tangential (y) motion should survive.
-    const prev = rigAt(0, 0, false);
-    const swept = createInitialRig({ variantId: "sedan", position: { x: 5, y: 2 }, heading: 0 as Radians });
+  it("slides along a wall on a genuinely shallow (grazing) approach instead of dead-stopping", () => {
+    // Motion mostly parallel to the wall face: the tangential (y) component must survive.
+    const prev = createInitialRig({ variantId: "sedan", position: { x: 1.5, y: 0 }, heading: 0 as Radians });
+    const swept = createInitialRig({ variantId: "sedan", position: { x: 3, y: 4 }, heading: 0 as Radians });
     const result = resolveRigCollision({ prevRig: prev, sweptRig: swept, obstacles: frontWall, catalog });
     expect(result.contacted).toBe(true);
     expect(anyOverlap(rigFootprints(result.rig, catalog), frontWall)).toBe(false);
-    // Blocked in x (can't reach x=5) but slid in y toward the target.
-    expect(result.rig.car.rearAxle.x).toBeLessThan(5);
-    expect(result.rig.car.rearAxle.y).toBeGreaterThan(0.2);
+    // Blocked in x (front bumper at the wall) but slid substantially in y toward the target.
+    expect(result.rig.car.rearAxle.x).toBeLessThan(3);
+    expect(result.rig.car.rearAxle.y).toBeGreaterThan(2);
+  });
+
+  it("slides only partially at a mid-angle (45°) approach", () => {
+    const prev = rigAt(0, 0, false);
+    const swept = createInitialRig({ variantId: "sedan", position: { x: 4, y: 4 }, heading: 0 as Radians });
+    const result = resolveRigCollision({ prevRig: prev, sweptRig: swept, obstacles: frontWall, catalog });
+    expect(result.contacted).toBe(true);
+    // Some slide survives, but clearly less than the full tangential projection (y = 4).
+    expect(result.rig.car.rearAxle.y).toBeGreaterThan(2);
+    expect(result.rig.car.rearAxle.y).toBeLessThan(3.5);
   });
 
   it("does not slide sideways for a head-on perpendicular approach", () => {
     const result = resolveRigCollision({ prevRig: rigAt(0), sweptRig: rigAt(4), obstacles: frontWall, catalog });
     expect(result.rig.car.rearAxle.y).toBeCloseTo(0);
+  });
+
+  it("binds (no sideways creep) when pressed steeply into a wall — wheels cannot slide", () => {
+    // Held throttle ~80° to the wall face (10° off head-on), frame after frame. Free travel
+    // before first contact may add a little y, but once pressed the rig must stop crabbing.
+    let rig = rigAt(0, 0, false);
+    let yAtFrame10 = 0;
+    for (let i = 0; i < 60; i++) {
+      const attempt = createInitialRig({
+        variantId: "sedan",
+        position: { x: rig.car.rearAxle.x + 0.49, y: rig.car.rearAxle.y + 0.086 },
+        heading: 0 as Radians,
+      });
+      rig = resolveRigCollision({ prevRig: rig, sweptRig: attempt, obstacles: frontWall, catalog }).rig;
+      if (i === 9) yAtFrame10 = rig.car.rearAxle.y;
+    }
+    // Without grip binding this drifts ~+4.3 y over frames 10..60.
+    expect(Math.abs(rig.car.rearAxle.y - yAtFrame10)).toBeLessThan(0.02);
+    expect(Math.abs(rig.car.rearAxle.y)).toBeLessThan(0.45);
   });
 
   it("pushes out of a residual overlap when the previous pose already touches", () => {
