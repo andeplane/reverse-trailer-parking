@@ -9,20 +9,20 @@ describe("steerToRotation", () => {
     expect(steerToRotation(0 as Radians, STEER_MAX)).toBeCloseTo(0);
   });
 
-  it("returns +π/2 at full lock one way", () => {
-    expect(steerToRotation(STEER_MAX, STEER_MAX)).toBeCloseTo(Math.PI / 2);
+  it("rotates the icon CCW on screen (negative CSS rotation) at full LEFT lock", () => {
+    expect(steerToRotation(STEER_MAX, STEER_MAX)).toBeCloseTo(-Math.PI / 2);
   });
 
-  it("returns −π/2 at full lock the other way", () => {
-    expect(steerToRotation((-STEER_MAX) as Radians, STEER_MAX)).toBeCloseTo(-Math.PI / 2);
+  it("rotates the icon CW on screen (positive CSS rotation) at full RIGHT lock", () => {
+    expect(steerToRotation((-STEER_MAX) as Radians, STEER_MAX)).toBeCloseTo(Math.PI / 2);
   });
 
   it("scales proportionally for a partial steer angle", () => {
-    expect(steerToRotation((STEER_MAX / 2) as Radians, STEER_MAX)).toBeCloseTo(Math.PI / 4);
+    expect(steerToRotation((STEER_MAX / 2) as Radians, STEER_MAX)).toBeCloseTo(-Math.PI / 4);
   });
 
   it("clamps beyond steerMax defensively", () => {
-    expect(steerToRotation((STEER_MAX * 2) as Radians, STEER_MAX)).toBeCloseTo(Math.PI / 2);
+    expect(steerToRotation((STEER_MAX * 2) as Radians, STEER_MAX)).toBeCloseTo(-Math.PI / 2);
   });
 });
 
