@@ -4,7 +4,9 @@ import { createKeyboardInput } from "../../engine/input/keyboard-input";
 import { createTouchInput } from "../../engine/input/touch-input";
 import type { Renderer } from "../../engine/render/renderer";
 import { createControlsOverlay } from "../hud/controls-overlay";
+import { createLoseOverlay, type LoseOverlay } from "../hud/lose-overlay";
 import { createWinOverlay, type WinOverlay } from "../hud/win-overlay";
+import { healthFraction, isWrecked } from "../vehicle/damage";
 import type { Level } from "../level/level-types";
 import { levelToWorld } from "../level/level-to-world";
 import { applyDebugState, debugStateOf, encodeDebugState, parseDebugState } from "../level/debug-state";
@@ -64,6 +66,20 @@ export function createPlayScreen(args: {
   const timerEl = document.createElement("div");
   timerEl.className = "play-timer";
   controlsRoot.appendChild(timerEl);
+
+  // Health bar: remaining crash budget (impacts drain it; see vehicle/damage.ts).
+  const healthEl = document.createElement("div");
+  healthEl.className = "play-health";
+  const healthFillEl = document.createElement("div");
+  healthFillEl.className = "play-health-fill";
+  healthEl.appendChild(healthFillEl);
+  controlsRoot.appendChild(healthEl);
+  function updateHealth(): void {
+    const frac = healthFraction(sandbox.getWorld().damage);
+    healthFillEl.style.width = `${(frac * 100).toFixed(1)}%`;
+    healthEl.classList.toggle("warn", frac < 0.67 && frac >= 0.34);
+    healthEl.classList.toggle("danger", frac < 0.34);
+  }
   function elapsedSeconds(): number {
     return (clock.now() - runStart) / 1000;
   }
@@ -168,6 +184,22 @@ export function createPlayScreen(args: {
   let framesSinceUrlWrite = 0;
 
   let winOverlay: WinOverlay | null = null;
+  let loseOverlay: LoseOverlay | null = null;
+
+  function checkLose(): void {
+    if (!isWrecked(sandbox.getWorld().damage)) return;
+    loseOverlay = createLoseOverlay({
+      parent: controlsRoot,
+      levelName: level.name,
+      onRetry: () => {
+        loseOverlay?.dispose();
+        loseOverlay = null;
+        reset();
+        updateHealth();
+      },
+      onMenu: onExitToMenu,
+    });
+  }
 
   function checkWin(): void {
     const world = sandbox.getWorld();
@@ -195,15 +227,17 @@ export function createPlayScreen(args: {
 
   return {
     tick(frameMs?: number): void {
-      if (winOverlay) return; // frozen after winning until Retry/Next/Menu
+      if (winOverlay || loseOverlay) return; // frozen after win/loss until Retry/Next/Menu
       updateTimer();
       sandbox.tick(frameMs);
       updateExitArrow();
+      updateHealth();
       if (sandbox.isDebug() && ++framesSinceUrlWrite >= 20) {
         framesSinceUrlWrite = 0;
         writeDebugUrl();
       }
       checkWin();
+      if (!winOverlay) checkLose();
     },
     dispose(): void {
       window.removeEventListener("keydown", onKeyDown);
@@ -211,10 +245,12 @@ export function createPlayScreen(args: {
       dismissBanner();
       if (sandbox.isDebug()) clearDebugUrl();
       winOverlay?.dispose();
+      loseOverlay?.dispose();
       for (const d of disposers) d();
       backButton.remove();
       restartButton.remove();
       timerEl.remove();
+      healthEl.remove();
       exitArrow.remove();
       steeringEl.remove();
       sandbox.dispose();

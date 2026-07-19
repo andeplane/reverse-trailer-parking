@@ -176,3 +176,89 @@ describe("stepWorld collision invariant (US4)", () => {
   });
 });
 
+describe("stepWorld damage", () => {
+  const SIM_DT = (1 / 120) as Seconds;
+  const fullCatalog = createVariantCatalog({ cars: allCarVariants, trailers: allTrailerVariants });
+
+  function wall(cx: number, cy: number, halfL: number, halfW: number): Obb {
+    return { center: { x: cx, y: cy }, halfL, halfW, rotation: 0 as Radians };
+  }
+
+  function sedanWorld(walls: Obb[], opts: { withTrailer?: boolean } = {}): World {
+    const cars: CarSpawn[] = [
+      {
+        variantId: "sedan",
+        role: "drivable",
+        position: { x: 0, y: 0 },
+        heading: 0 as Radians,
+        ...(opts.withTrailer ? { trailerVariantId: "caravan" } : {}),
+      },
+    ];
+    return createWorld({ cars, boundary: walls, catalog: fullCatalog });
+  }
+
+  function drive(world: World, input: ControlInput, steps: number): World {
+    let current = world;
+    for (let i = 0; i < steps; i++) current = stepWorld({ world: current, input, dt: SIM_DT });
+    return current;
+  }
+
+  /** Steps until `done(world)` holds (and asserts it was reached within `maxSteps`). */
+  function driveUntil(world: World, input: ControlInput, done: (w: World) => boolean, maxSteps: number): World {
+    let current = world;
+    for (let i = 0; i < maxSteps && !done(current); i++) {
+      current = stepWorld({ world: current, input, dt: SIM_DT });
+    }
+    expect(done(current)).toBe(true);
+    return current;
+  }
+
+  it("starts undamaged and clear of contact", () => {
+    const world = sedanWorld([]);
+    expect(world.damage).toBe(0);
+    expect(world.rigInContact).toBe(false);
+  });
+
+  it("charges a head-on wall crash exactly once — sustained grinding adds nothing", () => {
+    const world = sedanWorld([wall(8, 0, 0.5, 8)]);
+    const crashed = driveUntil(world, { throttle: 1, steer: 0 }, (w) => w.damage > 0, 1200);
+    expect(crashed.rigInContact).toBe(true);
+
+    const ground = drive(crashed, { throttle: 1, steer: 0 }, 300); // keep pushing into the wall
+    expect(ground.rigInContact).toBe(true);
+    expect(ground.damage).toBe(crashed.damage); // one impact, not one per step
+  });
+
+  it("charges again after backing away and re-hitting (contact must release in between)", () => {
+    const world = sedanWorld([wall(8, 0, 0.5, 8)]);
+    const crashed = driveUntil(world, { throttle: 1, steer: 0 }, (w) => w.damage > 0, 1200);
+    const firstDamage = crashed.damage;
+
+    const backedAway = drive(crashed, { throttle: -1, steer: 0 }, 240); // ~2s of reversing clear
+    expect(backedAway.rigInContact).toBe(false);
+    expect(backedAway.damage).toBe(firstDamage);
+
+    const reHit = driveUntil(backedAway, { throttle: 1, steer: 0 }, (w) => w.damage > firstDamage, 2400);
+    expect(reHit.damage).toBeGreaterThan(firstDamage);
+  });
+
+  it("does not charge a slow parking nudge below the impact dead-zone", () => {
+    // Place the wall a couple of centimetres off the front bumper so the car cannot reach 0.5 m/s.
+    const clear = sedanWorld([]);
+    const carBox = rigFootprints(toRig(drivableCar(clear)), fullCatalog)[0];
+    if (!carBox) throw new Error("expected a car footprint");
+    const frontX = carBox.center.x + carBox.halfL;
+    const world = sedanWorld([wall(frontX + 0.02 + 0.5, 0, 0.5, 8)]);
+
+    const nudged = driveUntil(world, { throttle: 1, steer: 0 }, (w) => w.rigInContact, 200);
+    expect(nudged.damage).toBe(0);
+  });
+
+  it("charges when reversing the trailer into a wall behind the rig", () => {
+    const world = sedanWorld([wall(-11, 0, 0.5, 8)], { withTrailer: true });
+    const crashed = driveUntil(world, { throttle: -1, steer: 0 }, (w) => w.damage > 0, 2000);
+    expect(crashed.rigInContact).toBe(true);
+    expect(crashed.damage).toBeGreaterThan(0);
+  });
+});
+

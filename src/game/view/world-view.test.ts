@@ -33,6 +33,8 @@ function world(cars: CarState[], overrides: Partial<World> = {}): World {
     exit: null,
     bounds: { width: 20, height: 20 },
     catalog,
+    damage: 0,
+    rigInContact: false,
     ...overrides,
   };
 }

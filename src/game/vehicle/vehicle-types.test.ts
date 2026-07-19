@@ -52,17 +52,17 @@ describe("world helpers", () => {
   const catalog = createVariantCatalog();
 
   it("finds the drivable car", () => {
-    const world: World = { cars: [makeCar("placed"), makeCar("drivable")], boundary: [], solids: [], grid: TILE_GRID, exit: null, bounds: { width: 100, height: 100 }, catalog };
+    const world: World = { cars: [makeCar("placed"), makeCar("drivable")], boundary: [], solids: [], grid: TILE_GRID, exit: null, bounds: { width: 100, height: 100 }, catalog, damage: 0, rigInContact: false };
     expect(drivableCar(world).role).toBe("drivable");
   });
 
   it("throws when no car is drivable", () => {
-    const world: World = { cars: [makeCar("placed")], boundary: [], solids: [], grid: TILE_GRID, exit: null, bounds: { width: 100, height: 100 }, catalog };
+    const world: World = { cars: [makeCar("placed")], boundary: [], solids: [], grid: TILE_GRID, exit: null, bounds: { width: 100, height: 100 }, catalog, damage: 0, rigInContact: false };
     expect(() => drivableCar(world)).toThrow(RangeError);
   });
 
   it("returns only placed cars", () => {
-    const world: World = { cars: [makeCar("placed"), makeCar("drivable")], boundary: [], solids: [], grid: TILE_GRID, exit: null, bounds: { width: 100, height: 100 }, catalog };
+    const world: World = { cars: [makeCar("placed"), makeCar("drivable")], boundary: [], solids: [], grid: TILE_GRID, exit: null, bounds: { width: 100, height: 100 }, catalog, damage: 0, rigInContact: false };
     expect(placedCars(world)).toHaveLength(1);
     expect(placedCars(world)[0]?.role).toBe("placed");
   });
