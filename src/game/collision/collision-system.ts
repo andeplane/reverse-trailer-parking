@@ -165,7 +165,8 @@ function slideAlongContact(args: {
 /**
  * Resolves the drivable rig against immovable obstacles: block-at-contact by bisecting the taken
  * sub-step (tunnelling-proof because `prevRig` is known clear), then MTV push-out of any residue.
- * Deterministic; placed obstacles are never moved.
+ * Deterministic; placed obstacles are never moved. On contact, `contactNormal` is the deepest
+ * separation normal (unit, pointing out of the obstacle) — the impact direction for damage.
  */
 export function resolveRigCollision(args: {
   prevRig: Rig;
@@ -173,15 +174,19 @@ export function resolveRigCollision(args: {
   obstacles: Obb[];
   catalog: VariantCatalog;
   iterations?: number;
-}): { rig: Rig; contacted: boolean } {
+}): { rig: Rig; contacted: boolean; contactNormal: Vec2 | null } {
   const { prevRig, sweptRig, obstacles, catalog } = args;
   const iterations = args.iterations ?? DEFAULT_BISECT_ITERATIONS;
 
-  if (obstacles.length === 0) return { rig: sweptRig, contacted: false };
+  if (obstacles.length === 0) return { rig: sweptRig, contacted: false, contactNormal: null };
 
   // If we somehow started overlapping, just push out from the previous pose.
   if (overlapsAny(rigFootprints(prevRig, catalog), obstacles)) {
-    return { rig: pushOut(prevRig, obstacles, catalog), contacted: true };
+    return {
+      rig: pushOut(prevRig, obstacles, catalog),
+      contacted: true,
+      contactNormal: contactNormal(prevRig, obstacles, catalog),
+    };
   }
 
   // Sample the taken path to find the first overlapping fraction (tunnelling-proof for coarse steps).
@@ -193,7 +198,7 @@ export function resolveRigCollision(args: {
       break;
     }
   }
-  if (firstHit === -1) return { rig: sweptRig, contacted: false };
+  if (firstHit === -1) return { rig: sweptRig, contacted: false, contactNormal: null };
 
   // Bisect between the last clear sample and the first overlapping one for the exact contact pose.
   let lo = (firstHit - 1) / PATH_SAMPLES;
@@ -207,6 +212,7 @@ export function resolveRigCollision(args: {
 
   const contactPose = lerpRig(prevRig, sweptRig, lo, catalog);
   const blockedPose = lerpRig(prevRig, sweptRig, hi, catalog); // barely overlapping → clean normal
+  const normal = contactNormal(blockedPose, obstacles, catalog);
   const slid = slideAlongContact({ contactPose, sweptRig, blockedPose, obstacles, catalog });
-  return { rig: pushOut(slid, obstacles, catalog), contacted: true };
+  return { rig: pushOut(slid, obstacles, catalog), contacted: true, contactNormal: normal };
 }

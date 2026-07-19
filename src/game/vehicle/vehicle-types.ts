@@ -75,6 +75,11 @@ export interface World {
   exit: ExitLine | null;
   bounds: { width: number; height: number };
   catalog: VariantCatalog;
+  /** Accumulated crash-damage points on the drivable rig (see `damage.ts`; ≥ MAX_DAMAGE = lost). */
+  damage: number;
+  /** True while the rig ended the last step touching an obstacle — impacts charge only on the
+   * clear→contact edge, so sustained grinding is a single hit. */
+  rigInContact: boolean;
 }
 
 export interface CarSpawn {

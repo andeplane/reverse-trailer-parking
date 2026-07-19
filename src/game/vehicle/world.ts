@@ -1,9 +1,10 @@
 import type { Radians } from "../../engine/math/angles";
 import type { MPerS, Seconds } from "../../engine/math/units";
-import type { Vec2 } from "../../engine/math/vec2";
+import { dot, type Vec2 } from "../../engine/math/vec2";
 import type { Obb } from "../../engine/math/obb";
 import type { ControlInput } from "../../engine/input/input-source";
 import { obstacleFootprints, resolveRigCollision } from "../collision/collision-system";
+import { damagePointsForImpact } from "./damage";
 import { stepRig } from "./vehicle-model";
 import {
   drivableCar,
@@ -55,6 +56,8 @@ export function createWorld(args: {
     exit: args.exit ?? null,
     bounds: args.bounds ?? { width: gridWidth(grid), height: gridHeight(grid) },
     catalog: args.catalog,
+    damage: 0,
+    rigInContact: false,
   };
 }
 
@@ -81,19 +84,36 @@ export function createInitialRig(args: {
 /**
  * Advances only the drivable rig via `stepRig`, then resolves collision against every placed car
  * (and its trailer) and the boundary so the rig can never overlap or tunnel through them. Placed
- * cars are immovable.
+ * cars are immovable. A contact beginning on this step (the rig was clear before) is an impact and
+ * charges crash damage by the speed component into the surface.
  */
 export function stepWorld(args: { world: World; input: ControlInput; dt: Seconds }): World {
   const { world, input, dt } = args;
   const prevRig = toRig(drivableCar(world));
   const sweptRig = stepRig({ rig: prevRig, input, dt, catalog: world.catalog });
-  const { rig: resolvedRig } = resolveRigCollision({
+  const { rig: resolvedRig, contacted, contactNormal } = resolveRigCollision({
     prevRig,
     sweptRig,
     obstacles: obstacleFootprints(world),
     catalog: world.catalog,
   });
+
+  let damage = world.damage;
+  if (contacted && !world.rigInContact && contactNormal) {
+    const speed = prevRig.car.speed as number;
+    if (speed !== 0) {
+      const heading = prevRig.car.heading;
+      const motion: Vec2 = {
+        x: Math.cos(heading) * Math.sign(speed),
+        y: Math.sin(heading) * Math.sign(speed),
+      };
+      // Speed component driving into the surface; grazing touches charge little, head-ons fully.
+      const impactSpeed = Math.max(0, -dot(motion, contactNormal)) * Math.abs(speed);
+      damage += damagePointsForImpact(impactSpeed);
+    }
+  }
+
   const steppedCar = fromRig(resolvedRig);
   const cars = world.cars.map((car) => (car.role === "drivable" ? steppedCar : car));
-  return { ...world, cars };
+  return { ...world, cars, damage, rigInContact: contacted };
 }
