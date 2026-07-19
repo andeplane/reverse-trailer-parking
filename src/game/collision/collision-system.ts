@@ -16,6 +16,13 @@ const MTV_ITERATIONS = 8;
 const SLIDE_ITERATIONS = 8;
 /** Path samples along the taken step; makes contact detection tunnelling-proof for coarse steps. */
 const PATH_SAMPLES = 32;
+/**
+ * Grip alignment (cos of the angle between the attempted motion and the contact surface) below
+ * which the rig binds instead of sliding. Wheels can only roll along the body axis, so a rig
+ * pressing steeply into an obstacle must not crab sideways along it; only motion already mostly
+ * parallel to the surface may carry through as a slide.
+ */
+const SLIDE_GRIP_CUTOFF = 0.4;
 
 /** Oriented footprints of a rig: the car OBB plus its trailer OBB (if towed). */
 export function rigFootprints(rig: Rig, catalog: VariantCatalog): Obb[] {
@@ -128,7 +135,10 @@ function contactNormal(rig: Rig, obstacles: Obb[], catalog: VariantCatalog): Vec
 
 /**
  * Slides the rig along the contact tangent: the leftover motion into the surface is projected onto
- * the tangent so the rig grazes rather than dead-stops. Deterministic; falls back to no slide.
+ * the tangent so a grazing rig glides rather than dead-stops. The slide is scaled by the grip
+ * alignment (how parallel the attempted motion is to the surface) and binds entirely below
+ * `SLIDE_GRIP_CUTOFF` — no-side-slip wheels cannot crab a steeply pressed rig sideways.
+ * Deterministic; falls back to no slide.
  */
 function slideAlongContact(args: {
   contactPose: Rig;
@@ -139,13 +149,17 @@ function slideAlongContact(args: {
 }): Rig {
   const { contactPose, sweptRig, blockedPose, obstacles, catalog } = args;
   const remaining = sub(sweptRig.car.rearAxle, contactPose.car.rearAxle);
-  if (length(remaining) < 1e-6) return contactPose;
+  const remainingLen = length(remaining);
+  if (remainingLen < 1e-6) return contactPose;
 
   const normal = contactNormal(blockedPose, obstacles, catalog);
   if (!normal) return contactPose;
 
-  const tangent = sub(remaining, scale(normal, dot(remaining, normal)));
-  if (length(tangent) < 1e-6) return contactPose;
+  const projected = sub(remaining, scale(normal, dot(remaining, normal)));
+  const grip = length(projected) / remainingLen;
+  const slideScale = (grip - SLIDE_GRIP_CUTOFF) / (1 - SLIDE_GRIP_CUTOFF);
+  if (slideScale <= 0 || length(projected) < 1e-6) return contactPose;
+  const tangent = scale(projected, Math.min(1, slideScale));
 
   const full = translateRig(contactPose, tangent);
   if (!overlapsAny(rigFootprints(full, catalog), obstacles)) return full;
