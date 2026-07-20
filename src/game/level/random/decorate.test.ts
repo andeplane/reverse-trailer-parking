@@ -8,7 +8,7 @@ import type { Radians } from "../../../engine/math/angles";
 import type { LevelCar } from "../level-types";
 import { bayOpeningOffset, cellIndex, inBounds, tileAt, type TileGrid } from "../tile-types";
 import { buildCorridor, corridorIntersectsObb, type Corridor } from "./corridor";
-import { decorate } from "./decorate";
+import { decorate, openFraction } from "./decorate";
 import { difficultyParams, type Difficulty } from "./difficulty";
 import { recordDriveIn, type RecordedPath } from "./drive-in";
 import { TEST_CATALOG, makeSkeleton, type TestSkeleton } from "./test-fixtures";
@@ -80,11 +80,16 @@ describe("decorate", () => {
   // Lazy + memoized so the expensive pipeline runs inside a test (governed by its timeout),
   // not at collection time — and only once per difficulty across the suite.
   const cache = new Map<Difficulty, Decorated>();
-  function fixtures(): Decorated[] {
-    for (const d of ["easy", "medium"] as const) {
-      if (!cache.has(d)) cache.set(d, decorateFixture(d));
+  function fixtureFor(difficulty: Difficulty): Decorated {
+    let fixture = cache.get(difficulty);
+    if (!fixture) {
+      fixture = decorateFixture(difficulty);
+      cache.set(difficulty, fixture);
     }
-    return [...cache.values()];
+    return fixture;
+  }
+  function fixtures(): Decorated[] {
+    return (["easy", "medium"] as const).map(fixtureFor);
   }
 
   it("keeps the grid dimensions and the solution corridor clear", { timeout: 120_000 }, () => {
@@ -128,6 +133,13 @@ describe("decorate", () => {
         }
       }
     }
+  });
+
+  it("fills open space down to the difficulty's openness ceiling", { timeout: 120_000 }, () => {
+    const { grid, corridor } = fixtureFor("medium");
+    const params = difficultyParams("medium");
+    // Best-effort fill: reserved bay aisles cannot be filled, so allow a little slack.
+    expect(openFraction(grid, corridor)).toBeLessThanOrEqual(params.maxOpenFraction + 0.05);
   });
 
   it("adds decoration beyond the skeleton (islands, bays or cars)", { timeout: 120_000 }, () => {

@@ -33,6 +33,8 @@ describe("difficultyParams", () => {
     expect(hard.requiredPinches).toBeGreaterThan(medium.requiredPinches);
     expect(medium.minArcLength).toBeGreaterThan(easy.minArcLength);
     expect(hard.minArcLength).toBeGreaterThan(medium.minArcLength);
+    expect(medium.maxOpenFraction).toBeLessThan(easy.maxOpenFraction);
+    expect(hard.maxOpenFraction).toBeLessThan(medium.maxOpenFraction);
   });
 
   it("keeps every grid large enough for the drive-in inset", () => {
