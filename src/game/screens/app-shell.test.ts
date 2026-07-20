@@ -66,6 +66,7 @@ function makeApp(storage?: LevelStorage) {
     catalog,
     levels: [level("a"), level("b")],
     isTouch: false,
+    drawSeed: () => 1, // deterministic random levels in tests
     ...(storage ? { storage } : {}),
   });
   return { app, renderer, controlsRoot };
@@ -172,6 +173,35 @@ describe("createApp", () => {
     (controlsRoot.querySelector(".play-back-button") as HTMLElement).click();
     expect(controlsRoot.querySelector(".editor-screen")).not.toBeNull();
     expect((controlsRoot.querySelector(".editor-name") as HTMLInputElement).value).toBe("Draft under test");
+  });
+
+  it("plays a generated random level with a 'Play another ▸' win action", { timeout: 60_000 }, () => {
+    const { app, controlsRoot, renderer } = makeApp();
+    app.playRandomLevel("easy");
+    expect(controlsRoot.querySelector(".menu-screen")).toBeNull();
+    expect(controlsRoot.querySelector(".play-back-button")).not.toBeNull();
+    app.tick(1000 / 60);
+    expect(renderer.syncs.length).toBeGreaterThan(0);
+    // The play screen was built directly (not via playLevel): its timer shows the generated par.
+    expect(controlsRoot.querySelector(".play-timer")?.textContent).toContain("par");
+  });
+
+  it("persists the last random difficulty and pre-selects it on the menu", { timeout: 60_000 }, () => {
+    const storage = fakeStorage();
+    const { app, controlsRoot } = makeApp(storage);
+    app.playRandomLevel("medium");
+    expect(storage.getItem("parking.randomDifficulty")).toBe("medium");
+    app.showMenu();
+    const selected = controlsRoot.querySelector(".menu-difficulty-option.selected") as HTMLElement;
+    expect(selected.dataset.difficulty).toBe("medium");
+  });
+
+  it("menu difficulty clicks persist without playing", () => {
+    const storage = fakeStorage();
+    const { app, controlsRoot } = makeApp(storage);
+    app.showMenu();
+    (controlsRoot.querySelector('[data-difficulty="hard"]') as HTMLElement).click();
+    expect(storage.getItem("parking.randomDifficulty")).toBe("hard");
   });
 
   it("still guards unsaved changes after a Test round-trip (baseline survives)", () => {

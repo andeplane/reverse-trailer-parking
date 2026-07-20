@@ -2,6 +2,8 @@ import type { Clock } from "../../engine/loop/clock";
 import type { Renderer } from "../../engine/render/renderer";
 import { emptyLevel } from "../level/editor-model";
 import type { Level } from "../level/level-types";
+import { isDifficulty, type Difficulty } from "../level/random/difficulty";
+import { generateRandomLevel } from "../level/random/generate-level";
 import { deleteCustomLevel, loadCustomLevels, mergeLevels, saveCustomLevel, type LevelStorage } from "../level/level-store";
 import type { VariantCatalog } from "../vehicle/vehicle-types";
 import { createEditorScreen } from "./editor-screen";
@@ -14,10 +16,14 @@ export interface App {
   tick(frameMs?: number): void;
   showMenu(): void;
   playLevel(level: Level): void;
+  /** Generate a fresh seeded random level at the given difficulty and play it. */
+  playRandomLevel(difficulty: Difficulty): void;
   /** Open the editor: with a level to edit it, without to start a new draft. */
   openEditor(initial?: Level): void;
   dispose(): void;
 }
+
+const DIFFICULTY_KEY = "parking.randomDifficulty";
 
 /**
  * The app shell: a small state machine over screens (menu / play / editor) sharing one renderer.
@@ -36,8 +42,11 @@ export function createApp(args: {
   isTouch?: boolean;
   /** Persistence for editor-authored levels (localStorage in the app). */
   storage?: LevelStorage;
+  /** Seed source for random levels (injected in tests; defaults to a time-based draw). */
+  drawSeed?: () => number;
 }): App {
   const { clock, renderer, controlsRoot, catalog, isTouch, storage } = args;
+  const drawSeed = args.drawSeed ?? ((): number => Date.now() % 0x7fffffff);
   const bundled = [...args.levels];
   let active: Screen | null = null;
 
@@ -66,6 +75,14 @@ export function createApp(args: {
   function deleteLevel(level: Level): void {
     if (storage) deleteCustomLevel(level.id, storage);
     app.showMenu(); // re-list (a deleted override reveals its bundled original again)
+  }
+
+  function savedDifficulty(): Difficulty {
+    const raw = storage?.getItem(DIFFICULTY_KEY);
+    return raw !== null && raw !== undefined && isDifficulty(raw) ? raw : "easy";
+  }
+  function saveDifficulty(difficulty: Difficulty): void {
+    storage?.setItem(DIFFICULTY_KEY, difficulty);
   }
 
   function clearWorld(): void {
@@ -126,6 +143,9 @@ export function createApp(args: {
           onPlay: (level) => app.playLevel(level),
           onEdit: (level?: Level) => app.openEditor(level),
           onDelete: (level) => deleteLevel(level),
+          onPlayRandom: (difficulty) => app.playRandomLevel(difficulty),
+          initialDifficulty: savedDifficulty(),
+          onDifficultyChange: (difficulty) => saveDifficulty(difficulty),
         }),
       );
     },
@@ -143,6 +163,26 @@ export function createApp(args: {
           onExitToMenu: () => app.showMenu(),
           ...(next ? { onNextLevel: () => app.playLevel(next) } : {}),
           isLastLevel: index >= 0 && !next,
+          ...(isTouch !== undefined ? { isTouch } : {}),
+        }),
+      );
+    },
+    playRandomLevel(difficulty: Difficulty): void {
+      saveDifficulty(difficulty);
+      // NOT via playLevel: random levels are session-only (never in the level list), and the win
+      // overlay's next action re-generates at the same difficulty rather than advancing a list.
+      const { level } = generateRandomLevel({ seed: drawSeed() >>> 0, difficulty, catalog });
+      swap(
+        createPlayScreen({
+          clock,
+          renderer,
+          controlsRoot,
+          level,
+          catalog,
+          onExitToMenu: () => app.showMenu(),
+          onNextLevel: () => app.playRandomLevel(difficulty),
+          nextLabel: "Play another ▸",
+          isLastLevel: false,
           ...(isTouch !== undefined ? { isTouch } : {}),
         }),
       );

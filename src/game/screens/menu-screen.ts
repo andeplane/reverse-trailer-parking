@@ -1,4 +1,5 @@
 import type { Level } from "../level/level-types";
+import { ALL_DIFFICULTIES, type Difficulty } from "../level/random/difficulty";
 import type { Screen } from "./screen";
 
 /**
@@ -20,6 +21,12 @@ export function createMenuScreen(args: {
   /** Open the editor: with a level to edit it, without to start a new one. */
   onEdit: (level?: Level) => void;
   onDelete?: (level: Level) => void;
+  /** Enables the 🎲 random-level card with its Easy|Medium|Hard segmented control. */
+  onPlayRandom?: (difficulty: Difficulty) => void;
+  /** Pre-selected difficulty (the player's last choice). */
+  initialDifficulty?: Difficulty;
+  /** Called whenever the player picks a difficulty (so the app can persist it). */
+  onDifficultyChange?: (difficulty: Difficulty) => void;
 }): Screen {
   const { parent, levels, onPlay, onEdit, onDelete } = args;
   const customIds = args.customIds ?? new Set<string>();
@@ -101,6 +108,54 @@ export function createMenuScreen(args: {
   }
   root.appendChild(list);
 
+  // 🎲 Random level: a card + segmented difficulty control. Generation is synchronous, so the
+  // click defers one tick to let "Generating…" paint before the app freezes for ~a second.
+  let randomTimer: ReturnType<typeof setTimeout> | undefined;
+  if (args.onPlayRandom) {
+    const onPlayRandom = args.onPlayRandom;
+    let difficulty: Difficulty = args.initialDifficulty ?? "easy";
+
+    const randomSection = document.createElement("div");
+    randomSection.className = "menu-random";
+
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "menu-random-card";
+    const name = document.createElement("span");
+    name.className = "menu-level-name";
+    name.textContent = "🎲 Random level";
+    card.appendChild(name);
+    card.addEventListener("click", () => {
+      card.disabled = true;
+      name.textContent = "Generating…";
+      randomTimer = setTimeout(() => onPlayRandom(difficulty), 30);
+    });
+    randomSection.appendChild(card);
+
+    const segmented = document.createElement("div");
+    segmented.className = "menu-difficulty";
+    segmented.setAttribute("role", "group");
+    segmented.setAttribute("aria-label", "Random level difficulty");
+    const options = new Map<Difficulty, HTMLButtonElement>();
+    for (const d of ALL_DIFFICULTIES) {
+      const option = document.createElement("button");
+      option.type = "button";
+      option.className = "menu-difficulty-option";
+      option.dataset.difficulty = d;
+      option.textContent = d.charAt(0).toUpperCase() + d.slice(1);
+      option.addEventListener("click", () => {
+        difficulty = d;
+        for (const [key, el] of options) el.classList.toggle("selected", key === d);
+        args.onDifficultyChange?.(d);
+      });
+      options.set(d, option);
+      segmented.appendChild(option);
+    }
+    options.get(difficulty)?.classList.add("selected");
+    randomSection.appendChild(segmented);
+    root.appendChild(randomSection);
+  }
+
   const editButton = document.createElement("button");
   editButton.type = "button";
   editButton.className = "menu-edit-button";
@@ -113,6 +168,7 @@ export function createMenuScreen(args: {
   return {
     tick(): void {},
     dispose(): void {
+      clearTimeout(randomTimer);
       document.removeEventListener("pointerdown", onDocPointerDown);
       root.remove();
     },

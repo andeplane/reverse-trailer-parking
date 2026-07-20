@@ -5,7 +5,9 @@ import { createWinOverlay } from "./win-overlay";
 let parent: HTMLElement | undefined;
 afterEach(() => parent?.remove());
 
-function mount(opts: { onNext?: () => void; onRetry?: () => void; onMenu?: () => void; isLastLevel?: boolean } = {}) {
+function mount(
+  opts: { onNext?: () => void; onRetry?: () => void; onMenu?: () => void; isLastLevel?: boolean; nextLabel?: string } = {},
+) {
   parent = document.createElement("div");
   document.body.appendChild(parent);
   const overlay = createWinOverlay({
@@ -15,6 +17,7 @@ function mount(opts: { onNext?: () => void; onRetry?: () => void; onMenu?: () =>
     onMenu: opts.onMenu ?? (() => {}),
     ...(opts.onNext ? { onNext: opts.onNext } : {}),
     ...(opts.isLastLevel !== undefined ? { isLastLevel: opts.isLastLevel } : {}),
+    ...(opts.nextLabel !== undefined ? { nextLabel: opts.nextLabel } : {}),
   });
   return { overlay, parent };
 }
@@ -37,6 +40,11 @@ describe("createWinOverlay", () => {
     const { parent } = mount({ onNext: () => (next += 1) });
     (parent.querySelector(".win-next") as HTMLElement).click();
     expect(next).toBe(1);
+  });
+
+  it("uses a custom next label when given (random levels say 'Play another ▸')", () => {
+    const { parent } = mount({ onNext: () => {}, nextLabel: "Play another ▸" });
+    expect(parent.querySelector(".win-next")?.textContent).toBe("Play another ▸");
   });
 
   it("wires Retry and Menu", () => {
