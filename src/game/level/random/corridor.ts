@@ -46,7 +46,7 @@ export function buildCorridor(args: {
   const obbs: Obb[] = [];
   let nextS = 0;
   for (const sample of path.samples) {
-    if (sample.s < nextS && sample.s !== 0) continue;
+    if (sample.s < nextS) continue;
     nextS = sample.s + SAMPLE_SPACING;
     const margin =
       localMargin({ baseMargin: params.baseMargin, distFromStart: path.arcLength - sample.s }) * marginScale;

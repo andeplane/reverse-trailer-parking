@@ -429,7 +429,8 @@ function simulateChain(args: {
   const aimAngle = Math.acos(clamp(reverseDir.x * toExit.x + reverseDir.y * toExit.y, -1, 1));
   if (aimAngle < 20 * DEG) return null;
 
-  return { samples, arcLength: s, durationSeconds: samples.length * dt, finalRig: rig };
+  // samples holds the initial pose plus one per step, so steps = samples.length - 1.
+  return { samples, arcLength: s, durationSeconds: (samples.length - 1) * dt, finalRig: rig };
 }
 
 /** Records a drive-in for the given lot skeleton; retries waypoint chains deterministically from
