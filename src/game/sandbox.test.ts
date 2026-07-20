@@ -35,12 +35,19 @@ function fakeInput(input: ControlInput): InputSource {
   } as InputSource & { wasDisposed: boolean };
 }
 
-function fakeRenderer(): Renderer & { syncCalls: Entity[][]; followCalls: Vec2[]; disposed: boolean } {
+function fakeRenderer(): Renderer & {
+  syncCalls: Entity[][];
+  followCalls: Vec2[];
+  setCameraCalls: Array<{ center: Vec2; zoom: number }>;
+  disposed: boolean;
+} {
   const syncCalls: Entity[][] = [];
   const followCalls: Vec2[] = [];
+  const setCameraCalls: Array<{ center: Vec2; zoom: number }> = [];
   return {
     syncCalls,
     followCalls,
+    setCameraCalls,
     disposed: false,
     sync(entities) {
       syncCalls.push(entities);
@@ -48,7 +55,9 @@ function fakeRenderer(): Renderer & { syncCalls: Entity[][]; followCalls: Vec2[]
     follow(target) {
       followCalls.push(target);
     },
-    setCamera() {},
+    setCamera(center, zoom) {
+      setCameraCalls.push({ center, zoom });
+    },
     screenToWorld() {
       return { x: 0, y: 0 };
     },
@@ -148,6 +157,25 @@ describe("createSandbox", () => {
     const withDebug = renderer.syncCalls.at(-1)!;
     expect(withDebug.length).toBeGreaterThan(withoutDebug);
     expect(withDebug.some((e) => e.id.startsWith("debug:"))).toBe(true);
+  });
+
+  it("uses an injected camera instead of the default rig-follow", () => {
+    const clock = new FakeClock();
+    const input = fakeInput({ throttle: 0, steer: 0 });
+    const renderer = fakeRenderer();
+    const world = buildWorld();
+    const sandbox = createSandbox({
+      clock,
+      input,
+      renderer,
+      world,
+      dt: (1 / 60) as Seconds,
+      camera: (rearAxle) => ({ center: { x: rearAxle.x + 5, y: rearAxle.y - 2 }, zoom: 2 }),
+    });
+
+    sandbox.tick(1000 / 60);
+    expect(renderer.followCalls).toHaveLength(0);
+    expect(renderer.setCameraCalls.at(-1)).toEqual({ center: { x: 5, y: -2 }, zoom: 2 });
   });
 
   it("dispose() disposes both the input and the renderer", () => {

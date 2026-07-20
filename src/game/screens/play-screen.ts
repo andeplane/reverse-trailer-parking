@@ -14,6 +14,9 @@ import { hasRigCrossedExit } from "../level/win";
 import { rigFootprints } from "../collision/collision-system";
 import { createSandbox, type Sandbox } from "../sandbox";
 import { drivableCar, toRig, type VariantCatalog } from "../vehicle/vehicle-types";
+import type { Vec2 } from "../../engine/math/vec2";
+import { fitZoom } from "../view/camera-fit";
+import { createPlayCamera } from "./play-camera";
 import type { Screen } from "./screen";
 
 function makeSteeringIndicator(parent: HTMLElement): HTMLElement {
@@ -51,12 +54,28 @@ export function createPlayScreen(args: {
   // Reproduce an exact scenario from a pasted debug URL (?dbg=<levelId>&x=..&y=..&h=..).
   const urlState = parseDebugState(window.location.search);
   if (urlState && urlState.levelId === level.id) world = applyDebugState(world, urlState);
+
+  // Free-look camera: still follows the rig, but the player can zoom (wheel/pinch, anchored at
+  // the cursor) and pan (drag) an offset on top. Gestures land on a full-screen capture layer
+  // below the HUD, so buttons and touch pedals stay clickable on top of it.
+  const mapWidth = level.grid.cols * level.grid.tileSize;
+  const mapHeight = level.grid.rows * level.grid.tileSize;
+  const camera = createPlayCamera({
+    minZoom: Math.min(1, fitZoom(mapWidth, mapHeight)),
+    maxZoom: 3,
+    maxPanRadius: Math.hypot(mapWidth, mapHeight) / 2,
+  });
+  const capture = document.createElement("div");
+  capture.className = "play-capture";
+  controlsRoot.appendChild(capture);
+
   const steeringEl = makeSteeringIndicator(controlsRoot);
 
   const sandboxRef: { current?: Sandbox } = {};
   let runStart = clock.now();
   const reset = (): void => {
     sandboxRef.current?.reset();
+    camera.resetPan(); // the view snaps back to the rig; the chosen zoom is kept
     runStart = clock.now();
   };
 
@@ -127,7 +146,9 @@ export function createPlayScreen(args: {
   goal.textContent = "Back the trailer out through the yellow gate";
   const how = document.createElement("p");
   how.className = "play-banner-controls";
-  how.textContent = isTouch ? "Pedals drive · right slider steers" : "↑ ↓ drive · ← → steer · R restarts";
+  how.textContent = isTouch
+    ? "Pedals drive · right slider steers · pinch zooms"
+    : "↑ ↓ drive · ← → steer · R restarts · scroll zooms";
   banner.append(goal, how);
   controlsRoot.appendChild(banner);
   const dismissBanner = (): void => {
@@ -139,8 +160,98 @@ export function createPlayScreen(args: {
   window.addEventListener("pointerdown", dismissBanner);
   const bannerTimer = setTimeout(dismissBanner, 8000);
 
-  const sandbox = createSandbox({ clock, input, renderer, world, steeringEl });
+  const sandbox = createSandbox({
+    clock,
+    input,
+    renderer,
+    world,
+    steeringEl,
+    camera: (rearAxle) => camera.frameFor(rearAxle),
+  });
   sandboxRef.current = sandbox;
+
+  // --- Camera gestures on the capture layer -----------------------------
+  function rigPosition(): Vec2 {
+    return drivableCar(sandbox.getWorld()).rearAxle;
+  }
+  const activePointers = new Map<number, { x: number; y: number }>();
+  let pinchLast: { dist: number; mid: { x: number; y: number } } | null = null;
+  let panLast: { x: number; y: number } | null = null;
+
+  function pinchState(): { dist: number; mid: { x: number; y: number } } | null {
+    if (activePointers.size < 2) return null;
+    const [a, b] = [...activePointers.values()];
+    return {
+      dist: Math.max(Math.hypot(b!.x - a!.x, b!.y - a!.y), 1),
+      mid: { x: (a!.x + b!.x) / 2, y: (a!.y + b!.y) / 2 },
+    };
+  }
+  /** Pans so the world point that was under `from` lands under the current client point. */
+  function panTo(clientX: number, clientY: number, from: { x: number; y: number }): void {
+    const wFrom = renderer.screenToWorld(from.x, from.y);
+    const wTo = renderer.screenToWorld(clientX, clientY);
+    camera.panBy({ x: wFrom.x - wTo.x, y: wFrom.y - wTo.y });
+  }
+  const onCapturePointerDown = (pe: PointerEvent): void => {
+    // Keep the drag alive even when the pointer crosses HUD elements. Synthetic events
+    // (jsdom tests) have no active pointer to capture, hence the guard.
+    try {
+      capture.setPointerCapture?.(pe.pointerId);
+    } catch {
+      /* no active pointer */
+    }
+    activePointers.set(pe.pointerId, { x: pe.clientX, y: pe.clientY });
+    if (activePointers.size >= 2) {
+      pinchLast = pinchState();
+      panLast = null;
+    } else {
+      panLast = { x: pe.clientX, y: pe.clientY };
+    }
+  };
+  const onCapturePointerMove = (pe: PointerEvent): void => {
+    if (!activePointers.has(pe.pointerId)) return;
+    activePointers.set(pe.pointerId, { x: pe.clientX, y: pe.clientY });
+    const pinch = pinchState();
+    if (pinch && pinchLast) {
+      panTo(pinch.mid.x, pinch.mid.y, pinchLast.mid);
+      camera.zoomAt({
+        anchor: renderer.screenToWorld(pinch.mid.x, pinch.mid.y),
+        factor: pinch.dist / pinchLast.dist,
+        rig: rigPosition(),
+      });
+      pinchLast = pinch;
+    } else if (panLast) {
+      panTo(pe.clientX, pe.clientY, panLast);
+      panLast = { x: pe.clientX, y: pe.clientY };
+    }
+  };
+  const onCapturePointerEnd = (pe: PointerEvent): void => {
+    activePointers.delete(pe.pointerId);
+    if (activePointers.size < 2) pinchLast = null;
+    const remaining = [...activePointers.values()];
+    panLast = remaining.length === 1 ? { ...remaining[0]! } : null;
+  };
+  const onCaptureWheel = (we: WheelEvent): void => {
+    we.preventDefault();
+    camera.zoomAt({
+      anchor: renderer.screenToWorld(we.clientX, we.clientY),
+      factor: Math.exp(-we.deltaY * 0.0015),
+      rig: rigPosition(),
+    });
+  };
+  capture.addEventListener("pointerdown", onCapturePointerDown);
+  capture.addEventListener("pointermove", onCapturePointerMove);
+  capture.addEventListener("pointerup", onCapturePointerEnd);
+  capture.addEventListener("pointercancel", onCapturePointerEnd);
+  capture.addEventListener("wheel", onCaptureWheel, { passive: false });
+
+  const recenterButton = document.createElement("button");
+  recenterButton.type = "button";
+  recenterButton.className = "play-recenter-button";
+  recenterButton.textContent = "⌖";
+  recenterButton.title = "Recenter camera";
+  recenterButton.addEventListener("click", () => camera.reset());
+  controlsRoot.appendChild(recenterButton);
 
   // Screen-edge arrow pointing at the exit when the follow-camera has it off-screen.
   const exitArrow = document.createElement("div");
@@ -231,6 +342,7 @@ export function createPlayScreen(args: {
   return {
     tick(frameMs?: number): void {
       if (winOverlay || loseOverlay) return; // frozen after win/loss until Retry/Next/Menu
+      recenterButton.classList.toggle("visible", camera.isAdjusted());
       updateTimer();
       sandbox.tick(frameMs);
       updateExitArrow();
@@ -256,6 +368,9 @@ export function createPlayScreen(args: {
       healthEl.remove();
       exitArrow.remove();
       steeringEl.remove();
+      capture.remove();
+      recenterButton.remove();
+      renderer.setCamera({ x: 0, y: 0 }, 1); // don't leak play zoom/pan into the next screen
       sandbox.dispose();
     },
   };

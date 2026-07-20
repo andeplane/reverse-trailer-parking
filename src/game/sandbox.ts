@@ -1,4 +1,5 @@
 import type { Seconds } from "../engine/math/units";
+import type { Vec2 } from "../engine/math/vec2";
 import type { Clock } from "../engine/loop/clock";
 import { createFixedStepLoop } from "../engine/loop/fixed-step-loop";
 import type { InputSource } from "../engine/input/input-source";
@@ -34,8 +35,10 @@ export function createSandbox(args: {
   dt?: Seconds;
   steeringEl?: HTMLElement;
   onReset?: () => void;
+  /** Overrides the default rig-follow camera (e.g. the play screen's free-look camera). */
+  camera?: (rearAxle: Vec2) => { center: Vec2; zoom: number };
 }): Sandbox {
-  const { clock, input, renderer, onReset } = args;
+  const { clock, input, renderer, onReset, camera } = args;
   const dt = args.dt ?? PLAY_DT;
   const initialWorld = args.world;
   let world = args.world;
@@ -49,7 +52,12 @@ export function createSandbox(args: {
     const withDebug = debugEnabled ? [...entities, ...worldToDebugEntities(world, world.catalog)] : entities;
     renderer.sync(withDebug);
     const drivable = drivableCar(world);
-    renderer.follow(drivable.rearAxle);
+    if (camera) {
+      const frame = camera(drivable.rearAxle);
+      renderer.setCamera(frame.center, frame.zoom);
+    } else {
+      renderer.follow(drivable.rearAxle);
+    }
     if (updateSteeringIndicator) {
       const variant = findCarVariant(world.catalog, drivable.variantId);
       updateSteeringIndicator(steerToRotation(drivable.steer, variant.steerMax));
