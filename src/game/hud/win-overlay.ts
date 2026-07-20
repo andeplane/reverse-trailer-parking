@@ -13,6 +13,8 @@ export function createWinOverlay(args: {
   /** True when there is no next level — celebrate finishing the list. */
   isLastLevel?: boolean;
   onNext?: () => void;
+  /** Label for the Next button (default "Next ▸"; random levels use "Play another ▸"). */
+  nextLabel?: string;
   onRetry: () => void;
   onMenu: () => void;
 }): WinOverlay {
@@ -56,7 +58,7 @@ export function createWinOverlay(args: {
     buttons.appendChild(b);
   }
 
-  if (onNext) addButton("Next ▸", "win-next", onNext);
+  if (onNext) addButton(args.nextLabel ?? "Next ▸", "win-next", onNext);
   addButton("Retry", "win-retry", onRetry);
   addButton("Menu", "win-menu", onMenu);
   panel.appendChild(buttons);

@@ -123,11 +123,19 @@
         display: flex;
         flex-direction: column;
         align-items: center;
-        justify-content: center;
+        /* flex-start + auto margins (not justify-content: center): centred while it fits, but
+           the top stays scroll-reachable once the list overflows a small phone screen. */
+        justify-content: flex-start;
         gap: 20px;
         padding: 24px;
         background: rgba(15, 18, 22, 0.72);
         overflow-y: auto;
+      }
+      .menu-screen > :first-child {
+        margin-top: auto;
+      }
+      .menu-screen > :last-child {
+        margin-bottom: auto;
       }
       .menu-title {
         margin: 0 0 8px;
@@ -149,7 +157,8 @@
         align-items: stretch;
         gap: 8px;
       }
-      .menu-level-card {
+      .menu-level-card,
+      .menu-random-card {
         flex: 1;
         display: flex;
         align-items: center;
@@ -164,7 +173,8 @@
           sans-serif;
         cursor: pointer;
       }
-      .menu-level-card:hover {
+      .menu-level-card:hover,
+      .menu-random-card:hover:not(:disabled) {
         filter: brightness(1.08);
       }
       .menu-level-badge {
@@ -194,6 +204,55 @@
         background: rgba(178, 48, 40, 0.95);
         border-color: rgba(255, 130, 120, 0.7);
         font: 700 12px system-ui, sans-serif;
+      }
+      .menu-random {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        width: min(420px, 90vw);
+      }
+      .menu-random-card {
+        background: linear-gradient(180deg, #7a4fd0, #5c3aa8);
+      }
+      .menu-random-card:disabled {
+        filter: saturate(0.5) brightness(0.85);
+        cursor: wait;
+      }
+      .menu-difficulty {
+        display: flex;
+        gap: 6px;
+      }
+      .menu-difficulty-option {
+        flex: 1;
+        padding: 13px 0; /* ≥44px total — thumb-sized touch target */
+        border: 2px solid rgba(255, 255, 255, 0.18);
+        border-radius: 10px;
+        background: rgba(40, 44, 50, 0.85);
+        color: rgba(255, 255, 255, 0.75);
+        font:
+          600 14px system-ui,
+          sans-serif;
+        cursor: pointer;
+      }
+      .menu-difficulty-option:hover {
+        filter: brightness(1.15);
+      }
+      .menu-difficulty-option.selected {
+        background: linear-gradient(180deg, #7a4fd0, #5c3aa8);
+        border-color: rgba(255, 255, 255, 0.45);
+        color: #fff;
+      }
+      .generating-overlay {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(10, 12, 15, 0.6);
+        color: #fff;
+        font:
+          600 18px system-ui,
+          sans-serif;
       }
       .menu-edit-button {
         padding: 12px 20px;

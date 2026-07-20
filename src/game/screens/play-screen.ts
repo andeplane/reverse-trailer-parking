@@ -37,6 +37,8 @@ export function createPlayScreen(args: {
   catalog: VariantCatalog;
   onExitToMenu: () => void;
   onNextLevel?: () => void;
+  /** Win-overlay label for the next action (random levels use "Play another ▸"). */
+  nextLabel?: string;
   /** True when this is the last level in the list (win overlay celebrates finishing everything). */
   isLastLevel?: boolean;
   isTouch?: boolean;
@@ -216,6 +218,7 @@ export function createPlayScreen(args: {
       timeText,
       isLastLevel: isLastLevel ?? false,
       ...(onNextLevel ? { onNext: onNextLevel } : {}),
+      ...(args.nextLabel !== undefined ? { nextLabel: args.nextLabel } : {}),
       onRetry: () => {
         winOverlay?.dispose();
         winOverlay = null;

@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { filledGrid } from "../../game/level/tile-types";
 import type { Level } from "../level/level-types";
+import type { Difficulty } from "../level/random/difficulty";
 import { createMenuScreen } from "./menu-screen";
 
 function level(id: string, name: string): Level {
@@ -26,6 +27,9 @@ function mount(
     onPlay?: (l: Level) => void;
     onEdit?: (l?: Level) => void;
     onDelete?: (l: Level) => void;
+    onPlayRandom?: (d: Difficulty) => void;
+    initialDifficulty?: Difficulty;
+    onDifficultyChange?: (d: Difficulty) => void;
   } = {},
 ) {
   parent = document.createElement("div");
@@ -38,6 +42,9 @@ function mount(
     ...(hooks.customIds ? { customIds: hooks.customIds } : {}),
     ...(hooks.bundledIds ? { bundledIds: hooks.bundledIds } : {}),
     ...(hooks.onDelete ? { onDelete: hooks.onDelete } : {}),
+    ...(hooks.onPlayRandom ? { onPlayRandom: hooks.onPlayRandom } : {}),
+    ...(hooks.initialDifficulty ? { initialDifficulty: hooks.initialDifficulty } : {}),
+    ...(hooks.onDifficultyChange ? { onDifficultyChange: hooks.onDifficultyChange } : {}),
   });
   return { screen, parent };
 }
@@ -117,6 +124,63 @@ describe("createMenuScreen", () => {
     const del = parent.querySelector(".menu-level-delete") as HTMLElement;
     expect(del.textContent).toBe("↺");
     expect(del.title).toContain("restores the original");
+  });
+
+  it("shows no random-level card unless onPlayRandom is provided", () => {
+    const { parent } = mount([level("a", "Alpha")]);
+    expect(parent.querySelector(".menu-random-card")).toBeNull();
+  });
+
+  it("plays a random level at the selected difficulty (after the Generating… tick)", () => {
+    vi.useFakeTimers();
+    try {
+      const played: Difficulty[] = [];
+      const { parent } = mount([], { onPlayRandom: (d) => played.push(d) });
+      const options = parent.querySelectorAll<HTMLButtonElement>(".menu-difficulty-option");
+      expect([...options].map((o) => o.textContent)).toEqual(["Easy", "Medium", "Hard"]);
+      expect(options[0]?.classList.contains("selected")).toBe(true); // defaults to easy
+
+      options[2]?.click(); // Hard
+      expect(options[2]?.classList.contains("selected")).toBe(true);
+      expect(options[0]?.classList.contains("selected")).toBe(false);
+
+      const card = parent.querySelector<HTMLButtonElement>(".menu-random-card")!;
+      card.click();
+      expect(card.disabled).toBe(true);
+      expect(card.textContent).toContain("Generating…");
+      expect(played).toEqual([]); // deferred so the label can paint
+      vi.runAllTimers();
+      expect(played).toEqual(["hard"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("cancels a pending generate when disposed before the timer fires", () => {
+    vi.useFakeTimers();
+    try {
+      const played: Difficulty[] = [];
+      const { screen, parent } = mount([], { onPlayRandom: (d) => played.push(d) });
+      (parent.querySelector(".menu-random-card") as HTMLElement).click();
+      screen.dispose();
+      vi.runAllTimers();
+      expect(played).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("pre-selects the initial difficulty and reports changes", () => {
+    const changes: Difficulty[] = [];
+    const { parent } = mount([], {
+      onPlayRandom: () => {},
+      initialDifficulty: "medium",
+      onDifficultyChange: (d) => changes.push(d),
+    });
+    const options = parent.querySelectorAll<HTMLButtonElement>(".menu-difficulty-option");
+    expect(options[1]?.classList.contains("selected")).toBe(true);
+    options[0]?.click();
+    expect(changes).toEqual(["easy"]);
   });
 
   it("removes its DOM on dispose", () => {
