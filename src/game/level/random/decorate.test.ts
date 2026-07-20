@@ -77,10 +77,18 @@ function placedCarObbs(car: LevelCar) {
 }
 
 describe("decorate", () => {
-  const fixtures = { easy: decorateFixture("easy"), medium: decorateFixture("medium") };
+  // Lazy + memoized so the expensive pipeline runs inside a test (governed by its timeout),
+  // not at collection time — and only once per difficulty across the suite.
+  const cache = new Map<Difficulty, Decorated>();
+  function fixtures(): Decorated[] {
+    for (const d of ["easy", "medium"] as const) {
+      if (!cache.has(d)) cache.set(d, decorateFixture(d));
+    }
+    return [...cache.values()];
+  }
 
   it("keeps the grid dimensions and the solution corridor clear", { timeout: 120_000 }, () => {
-    for (const { skeleton, corridor, grid } of Object.values(fixtures)) {
+    for (const { skeleton, corridor, grid } of fixtures()) {
       expect(grid.cols).toBe(skeleton.grid.cols);
       expect(grid.rows).toBe(skeleton.grid.rows);
       // No corridor-shadowed cell may hold anything that blocks driving.
@@ -95,7 +103,7 @@ describe("decorate", () => {
   });
 
   it("never places a car inside the corridor or overlapping another car", { timeout: 120_000 }, () => {
-    for (const { corridor, placedCars } of Object.values(fixtures)) {
+    for (const { corridor, placedCars } of fixtures()) {
       const all = placedCars.flatMap(placedCarObbs);
       for (const obb of all) expect(corridorIntersectsObb(corridor, obb)).toBe(false);
       const perCar = placedCars.map(placedCarObbs);
@@ -108,7 +116,7 @@ describe("decorate", () => {
   });
 
   it("paints bays as coherent closed/open pairs", { timeout: 120_000 }, () => {
-    for (const { grid } of Object.values(fixtures)) {
+    for (const { grid } of fixtures()) {
       for (let row = 0; row < grid.rows; row++) {
         for (let col = 0; col < grid.cols; col++) {
           const tile = tileAt(grid, col, row);
@@ -123,7 +131,7 @@ describe("decorate", () => {
   });
 
   it("adds decoration beyond the skeleton (islands, bays or cars)", { timeout: 120_000 }, () => {
-    for (const { skeleton, grid, placedCars } of Object.values(fixtures)) {
+    for (const { skeleton, grid, placedCars } of fixtures()) {
       let changedTiles = 0;
       for (let row = 0; row < grid.rows; row++) {
         for (let col = 0; col < grid.cols; col++) {

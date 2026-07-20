@@ -26,9 +26,15 @@ describe("generateRandomLevel", () => {
     expect(b.level).toEqual(a.level);
   });
 
-  it("different seeds → different levels", () => {
+  it("different seeds → different level geometry (not just a different id)", () => {
     const a = generateRandomLevel({ seed: 7, difficulty: "easy", catalog });
     const b = generateRandomLevel({ seed: 8, difficulty: "easy", catalog });
-    expect(b.level).not.toEqual(a.level);
+    const geometry = ({ level }: typeof a) => ({
+      grid: level.grid,
+      placedCars: level.placedCars,
+      drivable: level.drivable,
+      exit: level.exit,
+    });
+    expect(geometry(b)).not.toEqual(geometry(a));
   });
 });

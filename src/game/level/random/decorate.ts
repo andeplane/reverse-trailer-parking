@@ -93,7 +93,7 @@ function bayRotForOpening(offset: { dc: number; dr: number }): number {
     const o = bayOpeningOffset(rot);
     if (o.dc === offset.dc && o.dr === offset.dr) return rot;
   }
-  return 0;
+  throw new Error(`bayRotForOpening: no bay rotation opens toward (${offset.dc}, ${offset.dr})`);
 }
 
 /** Convert corridor-grazed ring grass to asphalt so the solution path never runs over grass. */
@@ -194,9 +194,12 @@ function decorateDock(args: {
     worldToCell(state.grid, add(centre, scale(dir, -tile * 0.45)))?.row === open.row;
   if (!openIsBehind) return;
   if (!bayPairUsable(state, corridor, closed, opening)) {
-    // The player's own cells sit under the corridor shadow — paint anyway if they're asphalt.
+    // The player's own cells sit under the corridor shadow — paint anyway if they're plain
+    // interior asphalt (still never on the ring/access road or a reserved aisle).
     for (const cell of [closed, open]) {
       if (!inBounds(state.grid, cell.col, cell.row) || !isPlainAsphalt(state.grid, cell.col, cell.row)) return;
+      if (isRing(state.grid, cell.col, cell.row)) return;
+      if (state.reservedAisle.has(cellIndex(state.grid, cell.col, cell.row))) return;
     }
   }
   paintBay(state, closed, opening);

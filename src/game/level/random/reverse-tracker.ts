@@ -193,7 +193,7 @@ export function replaySolutionReverse(args: {
       stallAccum += moved;
       stallSteps++;
       if (stallSteps >= STALL_WINDOW_STEPS) {
-        if (stallAccum < STALL_DISTANCE) return { won: false, seconds: step * dt, reason: "stall" };
+        if (stallAccum < STALL_DISTANCE) return { won: false, seconds: (step + 1) * dt, reason: "stall" };
         stallAccum = 0;
         stallSteps = 0;
       }
