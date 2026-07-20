@@ -9,7 +9,9 @@ import { stepWorld } from "./vehicle/world";
 import { worldToEntities } from "./view/world-view";
 import { worldToDebugEntities } from "./view/debug-view";
 
-const DEFAULT_DT = (1 / 120) as Seconds;
+/** The game's fixed simulation timestep — shared so offline simulation (e.g. the random-level
+ * generator's drive-in and verification replay) steps with exactly the play-time physics. */
+export const PLAY_DT = (1 / 120) as Seconds;
 
 export interface Sandbox {
   /** Advances by an explicit frame duration (ms), or measures it via the clock if omitted. */
@@ -34,7 +36,7 @@ export function createSandbox(args: {
   onReset?: () => void;
 }): Sandbox {
   const { clock, input, renderer, onReset } = args;
-  const dt = args.dt ?? DEFAULT_DT;
+  const dt = args.dt ?? PLAY_DT;
   const initialWorld = args.world;
   let world = args.world;
 
