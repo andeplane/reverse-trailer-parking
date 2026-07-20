@@ -277,12 +277,24 @@ export function createPlayScreen(args: {
   }
 
   // When debug is on, keep the URL in sync with the rig's exact state so it can be copied and
-  // pasted back to reproduce the scenario.
+  // pasted back to reproduce the scenario. The share `?level=` param (written by the app shell)
+  // is preserved so a pasted debug URL also carries the level itself.
+  function shareParam(): string | null {
+    return new URLSearchParams(window.location.search).get("level");
+  }
   function writeDebugUrl(): void {
-    history.replaceState(null, "", encodeDebugState(debugStateOf(sandbox.getWorld(), level.id)));
+    const params = new URLSearchParams(encodeDebugState(debugStateOf(sandbox.getWorld(), level.id)));
+    const share = shareParam();
+    if (share !== null) params.set("level", share);
+    history.replaceState(null, "", `?${params.toString()}`);
   }
   function clearDebugUrl(): void {
-    history.replaceState(null, "", window.location.pathname);
+    const share = shareParam();
+    history.replaceState(
+      null,
+      "",
+      share !== null ? `?level=${encodeURIComponent(share)}` : window.location.pathname,
+    );
   }
 
   const onKeyDown = (e: KeyboardEvent): void => {

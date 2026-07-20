@@ -4,6 +4,8 @@ export default defineConfig({
   test: {
     environment: "node",
     passWithNoTests: true,
+    // Only this checkout's tests — never agent worktrees under .claude/worktrees/.
+    include: ["src/**/*.test.ts"],
     environmentMatchGlobs: [
       ["**/*hud*/**", "jsdom"],
       ["**/*overlay*", "jsdom"],

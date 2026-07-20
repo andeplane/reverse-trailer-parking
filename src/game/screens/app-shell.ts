@@ -5,6 +5,8 @@ import type { Level } from "../level/level-types";
 import { isDifficulty, type Difficulty } from "../level/random/difficulty";
 import { generateRandomLevel } from "../level/random/generate-level";
 import { deleteCustomLevel, loadCustomLevels, mergeLevels, saveCustomLevel, type LevelStorage } from "../level/level-store";
+import { encodeLevelRef, LEVEL_PARAM, MAX_URL_LENGTH, parseLevelRef, type LevelShareRef } from "../level/share-url";
+import { validateLevel } from "../level/level-validate";
 import type { VariantCatalog } from "../vehicle/vehicle-types";
 import { createEditorScreen } from "./editor-screen";
 import { createMenuScreen } from "./menu-screen";
@@ -16,8 +18,10 @@ export interface App {
   tick(frameMs?: number): void;
   showMenu(): void;
   playLevel(level: Level): void;
-  /** Generate a fresh seeded random level at the given difficulty and play it. */
-  playRandomLevel(difficulty: Difficulty): void;
+  /** Generate a seeded random level at the given difficulty and play it (fresh seed if omitted). */
+  playRandomLevel(difficulty: Difficulty, seed?: number): void;
+  /** Route straight into the level a shared `?level=` URL refers to; false if absent/invalid. */
+  openFromUrl(search: string): Promise<boolean>;
   /** Open the editor: with a level to edit it, without to start a new draft. */
   openEditor(initial?: Level): void;
   dispose(): void;
@@ -78,17 +82,41 @@ export function createApp(args: {
   }
 
   /** Generate a verified random level; re-draws the seed a couple of times before giving up
-   * (a single draw failing is already near-impossible — 16 internal attempts per seed). */
-  function generateRandom(difficulty: Difficulty): Level | null {
+   * (a single draw failing is already near-impossible — 16 internal attempts per seed). An
+   * explicit seed (a shared URL) gets exactly one try so the URL and the map never diverge. */
+  function generateRandom(difficulty: Difficulty, fixedSeed?: number): { level: Level; seed: number } | null {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const seed = (drawSeed() + attempt * 7919) >>> 0; // offset so a same-ms redraw differs
-        return generateRandomLevel({ seed, difficulty, catalog }).level;
+        const seed = fixedSeed ?? ((drawSeed() + attempt * 7919) >>> 0); // offset so a same-ms redraw differs
+        return { level: generateRandomLevel({ seed, difficulty, catalog }).level, seed };
       } catch {
+        if (fixedSeed !== undefined) return null;
         // try another seed
       }
     }
     return null;
+  }
+
+  /** Reflect the active level in the address bar so the link is shareable/bookmarkable. */
+  let urlEpoch = 0;
+  function writeUrl(ref: LevelShareRef | null): void {
+    const epoch = ++urlEpoch; // a newer writeUrl invalidates any still-encoding older one
+    if (ref === null) {
+      history.replaceState(null, "", window.location.pathname);
+      return;
+    }
+    void encodeLevelRef(ref)
+      .then((value) => {
+        if (epoch !== urlEpoch) return;
+        const query = `?${LEVEL_PARAM}=${value}`;
+        if (window.location.origin.length + window.location.pathname.length + query.length > MAX_URL_LENGTH) {
+          console.warn(`Share URL exceeds ${MAX_URL_LENGTH} chars — some apps may truncate it.`);
+        }
+        history.replaceState(null, "", query);
+      })
+      .catch(() => {
+        /* URL sharing is best-effort — never break gameplay over it */
+      });
   }
 
   /** Generation is synchronous and can take ~a second on a phone. The win overlay's
@@ -129,6 +157,7 @@ export function createApp(args: {
   /** Play an editor draft; leaving the run returns to the editor with the draft AND its
    * unsaved-changes baseline intact (so exiting afterwards still prompts to save). */
   function testDraft(draft: Level, savedState: string): void {
+    writeUrl({ kind: "custom", level: draft });
     swap(
       createPlayScreen({
         clock,
@@ -144,6 +173,7 @@ export function createApp(args: {
 
   function openEditorScreen(initial: Level, savedState?: string): void {
     clearWorld();
+    writeUrl(null);
     swap(
       createEditorScreen({
         renderer,
@@ -164,6 +194,7 @@ export function createApp(args: {
     },
     showMenu(): void {
       clearWorld();
+      writeUrl(null);
       const levels = allLevels();
       swap(
         createMenuScreen({
@@ -184,6 +215,11 @@ export function createApp(args: {
       const levels = allLevels();
       const index = levels.findIndex((l) => l.id === level.id);
       const next = index >= 0 ? levels[index + 1] : undefined;
+      // A pristine bundled level shares by id; anything else (custom, edited override, one-off
+      // from a shared URL) must carry its full JSON so recipients without it can play it.
+      const isPristineBundled =
+        bundled.some((b) => b.id === level.id) && !customLevels().some((c) => c.id === level.id);
+      writeUrl(isPristineBundled ? { kind: "bundled", id: level.id } : { kind: "custom", level });
       swap(
         createPlayScreen({
           clock,
@@ -198,23 +234,24 @@ export function createApp(args: {
         }),
       );
     },
-    playRandomLevel(difficulty: Difficulty): void {
+    playRandomLevel(difficulty: Difficulty, seed?: number): void {
       saveDifficulty(difficulty);
       // NOT via playLevel: random levels are session-only (never in the level list), and the win
       // overlay's next action re-generates at the same difficulty rather than advancing a list.
-      const level = generateRandom(difficulty);
-      if (!level) {
+      const generated = generateRandom(difficulty, seed);
+      if (!generated) {
         // Never brick the UI on a pathological draw — fall back to the menu (which also
         // restores the random card from its "Generating…" state).
         app.showMenu();
         return;
       }
+      writeUrl({ kind: "random", difficulty, seed: generated.seed });
       swap(
         createPlayScreen({
           clock,
           renderer,
           controlsRoot,
-          level,
+          level: generated.level,
           catalog,
           onExitToMenu: () => app.showMenu(),
           onNextLevel: () => playRandomDeferred(difficulty),
@@ -224,10 +261,34 @@ export function createApp(args: {
         }),
       );
     },
+    async openFromUrl(search: string): Promise<boolean> {
+      const value = new URLSearchParams(search).get(LEVEL_PARAM);
+      if (!value) return false;
+      const ref = await parseLevelRef(value);
+      if (!ref) return false;
+      if (ref.kind === "random") {
+        app.playRandomLevel(ref.difficulty, ref.seed);
+        return true;
+      }
+      if (ref.kind === "bundled") {
+        const level = allLevels().find((l) => l.id === ref.id);
+        if (!level) return false;
+        app.playLevel(level);
+        return true;
+      }
+      try {
+        validateLevel(ref.level, catalog); // structurally parsed, but the data is untrusted
+      } catch {
+        return false;
+      }
+      app.playLevel(ref.level);
+      return true;
+    },
     openEditor(initial?: Level): void {
       openEditorScreen(initial ?? newDraft());
     },
     dispose(): void {
+      urlEpoch++; // drop any still-encoding URL write from this app
       active?.dispose();
       active = null;
     },
