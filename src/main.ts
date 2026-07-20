@@ -41,7 +41,10 @@ async function main(): Promise<void> {
     levels: builtInLevels(), // custom (editor) levels merge on top from storage
     storage: window.localStorage,
   });
-  app.showMenu();
+  // A shared `?level=` URL (random seed, bundled id, or full custom level) boots straight into
+  // that level; otherwise start at the menu.
+  const openedFromUrl = await app.openFromUrl(window.location.search).catch(() => false);
+  if (!openedFromUrl) app.showMenu();
 
   function frame(): void {
     app.tick();

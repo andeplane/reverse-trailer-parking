@@ -47,6 +47,18 @@ machine** in `src/game/screens/` (`AppShell`) over one shared Phaser surface —
   show, so deleting a custom override resurrects the bundled original.
   **Testing an editor draft returns to the editor** with the draft intact.
 
+**Share URLs** (`level/share-url.ts`): the address bar always reflects the
+active level via `?level=` — `b.<id>` (pristine bundled), `r.<difficulty>.<seed36>`
+(random; the base-36 seed is the `#XXXXX` code in the level name — generation is
+deterministic from seed+difficulty), or `z.<base64url deflate-raw JSON>` for
+custom/edited levels (`j.` = uncompressed fallback when CompressionStream is
+missing, e.g. jsdom). On boot `app.openFromUrl(search)` routes straight into the
+shared level (custom payloads are `parseLevel`d + `validateLevel`d; invalid →
+menu). The app shell writes it (`writeUrl`, epoch-guarded fire-and-forget; menu/
+editor clear it), warning past `MAX_URL_LENGTH` (2000 — a hard random level
+encodes to ~1.2k so it fits). The play screen's debug URL (`?dbg=`) preserves the
+`level` param so one pasted URL reproduces level AND rig state.
+
 **Levels are tile maps + edge curbs + data** (`src/game/level/`): a `Level` has a
 **`TileGrid`** (`tile-types.ts`: asphalt/grass/bay/bay-open/hedge/tree cells with 0–3
 rotation, **plus `hCurbs`/`vCurbs` boolean arrays — curbs live on the edges BETWEEN

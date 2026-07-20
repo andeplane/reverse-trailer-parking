@@ -7,6 +7,7 @@ import type { Vec2 } from "../../engine/math/vec2";
 import { allCarVariants, allTrailerVariants, createVariantCatalog } from "../vehicle/variants";
 import type { Level } from "../level/level-types";
 import { saveCustomLevel, type LevelStorage } from "../level/level-store";
+import { encodeLevelRef, parseLevelRef } from "../level/share-url";
 import { createApp } from "./app-shell";
 
 class FakeClock implements Clock {
@@ -45,7 +46,21 @@ function level(id: string): Level {
 }
 
 let controlsRoot: HTMLElement | undefined;
-afterEach(() => controlsRoot?.remove());
+let currentApp: { dispose(): void } | undefined;
+afterEach(() => {
+  currentApp?.dispose(); // also drops any still-encoding async URL write
+  currentApp = undefined;
+  controlsRoot?.remove();
+  history.replaceState(null, "", window.location.pathname); // don't leak ?level= between tests
+});
+
+/** Flushes the fire-and-forget async URL write in the app shell. */
+const flushUrl = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+/** Waits (bounded) for the async share-URL write; compression may span several macrotasks. */
+async function waitForUrl(pattern: RegExp): Promise<void> {
+  for (let i = 0; i < 50 && !pattern.test(window.location.search); i++) await flushUrl();
+}
 
 function fakeStorage(): LevelStorage {
   const store = new Map<string, string>();
@@ -69,6 +84,7 @@ function makeApp(storage?: LevelStorage, drawSeed?: () => number) {
     drawSeed: drawSeed ?? (() => 1), // deterministic random levels in tests
     ...(storage ? { storage } : {}),
   });
+  currentApp = app;
   return { app, renderer, controlsRoot };
 }
 
@@ -220,6 +236,76 @@ describe("createApp", () => {
     app.showMenu();
     (controlsRoot.querySelector('[data-difficulty="hard"]') as HTMLElement).click();
     expect(storage.getItem("parking.randomDifficulty")).toBe("hard");
+  });
+
+  describe("share URLs (?level=)", () => {
+    it("playing a bundled level writes ?level=b.<id>, and the menu clears it", async () => {
+      const { app } = makeApp();
+      app.showMenu();
+      (controlsRoot!.querySelector(".menu-level-card") as HTMLElement).click();
+      await flushUrl();
+      expect(window.location.search).toBe("?level=b.a");
+      app.showMenu();
+      await flushUrl();
+      expect(window.location.search).toBe("");
+    });
+
+    it("playing a custom level writes its full encoded JSON", async () => {
+      const storage = fakeStorage();
+      saveCustomLevel(level("mine"), storage);
+      const { app } = makeApp(storage);
+      app.showMenu();
+      (controlsRoot!.querySelector('.menu-level-card[data-level-id="mine"]') as HTMLElement).click();
+      await waitForUrl(/^\?level=[jz]\./);
+      expect(window.location.search).toMatch(/^\?level=[jz]\./);
+      const value = new URLSearchParams(window.location.search).get("level")!;
+      const parsed = await parseLevelRef(value);
+      expect(parsed?.kind).toBe("custom");
+      expect(parsed?.kind === "custom" && parsed.level.id).toBe("mine");
+    });
+
+    it("playing a random level writes ?level=r.<difficulty>.<seed36>", async () => {
+      const { app } = makeApp(undefined, () => parseInt("cwilu", 36));
+      app.playRandomLevel("easy");
+      await flushUrl();
+      expect(window.location.search).toBe("?level=r.easy.cwilu");
+    });
+
+    it("openFromUrl replays the exact random level a shared seed refers to", async () => {
+      const { app } = makeApp(undefined, () => {
+        throw new Error("must not draw a fresh seed for a shared one");
+      });
+      const opened = await app.openFromUrl("?level=r.easy.cwilu");
+      expect(opened).toBe(true);
+      expect(controlsRoot!.querySelector(".play-back-button")).not.toBeNull();
+      await flushUrl();
+      expect(window.location.search).toBe("?level=r.easy.cwilu"); // same seed round-trips
+    });
+
+    it("openFromUrl plays a bundled level by id and rejects unknown ids", async () => {
+      const { app } = makeApp();
+      expect(await app.openFromUrl("?level=b.nope")).toBe(false);
+      expect(await app.openFromUrl("?level=b.b")).toBe(true);
+      expect(controlsRoot!.querySelector(".play-back-button")).not.toBeNull();
+    });
+
+    it("openFromUrl plays a shared custom level from its encoded JSON", async () => {
+      const shared = { ...level("shared-one"), name: "From a friend" };
+      const value = await encodeLevelRef({ kind: "custom", level: shared });
+      const { app } = makeApp();
+      expect(await app.openFromUrl(`?level=${value}`)).toBe(true);
+      expect(controlsRoot!.querySelector(".play-back-button")).not.toBeNull();
+    });
+
+    it("openFromUrl returns false for absent, malformed, or invalid payloads", async () => {
+      const { app } = makeApp();
+      expect(await app.openFromUrl("")).toBe(false);
+      expect(await app.openFromUrl("?level=garbage")).toBe(false);
+      // Structurally valid JSON but semantically invalid (unknown car variant) must be rejected.
+      const bad = { ...level("bad"), drivable: { ...level("bad").drivable, variantId: "warp-drive" } };
+      const value = await encodeLevelRef({ kind: "custom", level: bad });
+      expect(await app.openFromUrl(`?level=${value}`)).toBe(false);
+    });
   });
 
   it("still guards unsaved changes after a Test round-trip (baseline survives)", () => {
