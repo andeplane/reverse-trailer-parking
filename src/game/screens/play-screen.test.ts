@@ -17,12 +17,19 @@ class FakeClock implements Clock {
   }
 }
 
-function fakeRenderer(): Renderer {
+type CameraCall = { center: { x: number; y: number }; zoom: number };
+
+function fakeRenderer(): Renderer & { cameraCalls: CameraCall[] } {
+  const cameraCalls: CameraCall[] = [];
   return {
+    cameraCalls,
     sync: (_e: Entity[]) => {},
     follow: () => {},
-    setCamera: () => {},
-    screenToWorld: () => ({ x: 0, y: 0 }),
+    setCamera: (center, zoom) => {
+      cameraCalls.push({ center, zoom });
+    },
+    // Linear screen↔world mapping (32 px/m, y flipped) so camera-gesture math is exercised.
+    screenToWorld: (clientX, clientY) => ({ x: clientX / 32, y: -clientY / 32 }),
     worldToScreen: () => ({ x: 0, y: 0 }),
     dispose: () => {},
   };
@@ -48,9 +55,10 @@ afterEach(() => controlsRoot?.remove());
 function mount(lvl: Level, onExitToMenu = () => {}, onNextLevel?: () => void) {
   controlsRoot = document.createElement("div");
   document.body.appendChild(controlsRoot);
+  const renderer = fakeRenderer();
   const screen = createPlayScreen({
     clock: new FakeClock(),
-    renderer: fakeRenderer(),
+    renderer,
     controlsRoot,
     level: lvl,
     catalog,
@@ -58,7 +66,7 @@ function mount(lvl: Level, onExitToMenu = () => {}, onNextLevel?: () => void) {
     isTouch: false,
     ...(onNextLevel ? { onNextLevel } : {}),
   });
-  return { screen, controlsRoot };
+  return { screen, controlsRoot, renderer };
 }
 
 describe("createPlayScreen", () => {
@@ -161,10 +169,82 @@ describe("createPlayScreen", () => {
     expect(controlsRoot.querySelector(".lose-overlay")).toBeNull();
   });
 
+  describe("free-look camera", () => {
+    const away = () => level({ a: { x: 30, y: -3 }, b: { x: 30, y: 3 }, outward: { x: 1, y: 0 } });
+    const capture = (root: HTMLElement) => root.querySelector(".play-capture") as HTMLElement;
+    const recenter = (root: HTMLElement) => root.querySelector(".play-recenter-button") as HTMLElement;
+    const pointer = (type: string, id: number, x: number, y: number): Event => {
+      const e = new MouseEvent(type, { clientX: x, clientY: y, bubbles: true, cancelable: true });
+      Object.defineProperty(e, "pointerId", { value: id });
+      return e;
+    };
+
+    it("mounts a gesture-capture layer and a hidden recenter button", () => {
+      const { screen, controlsRoot } = mount(away());
+      expect(capture(controlsRoot)).not.toBeNull();
+      screen.tick(1000 / 60);
+      expect(recenter(controlsRoot).classList.contains("visible")).toBe(false);
+    });
+
+    it("wheel-zooms in about the cursor and recenter restores the follow view", () => {
+      const { screen, controlsRoot, renderer } = mount(away());
+      screen.tick(1000 / 60);
+      expect(renderer.cameraCalls.at(-1)?.zoom).toBe(1);
+
+      capture(controlsRoot).dispatchEvent(
+        new WheelEvent("wheel", { deltaY: -200, clientX: 100, clientY: 100, cancelable: true }),
+      );
+      screen.tick(1000 / 60);
+      expect(renderer.cameraCalls.at(-1)?.zoom).toBeGreaterThan(1);
+      expect(recenter(controlsRoot).classList.contains("visible")).toBe(true);
+
+      recenter(controlsRoot).click();
+      screen.tick(1000 / 60);
+      expect(renderer.cameraCalls.at(-1)?.zoom).toBe(1);
+      expect(recenter(controlsRoot).classList.contains("visible")).toBe(false);
+    });
+
+    it("drag pans the view and Restart snaps it back to the rig", () => {
+      const { screen, controlsRoot, renderer } = mount(away());
+      const cap = capture(controlsRoot);
+      screen.tick(1000 / 60);
+      const centreBefore = renderer.cameraCalls.at(-1)!.center;
+
+      cap.dispatchEvent(pointer("pointerdown", 1, 100, 100));
+      cap.dispatchEvent(pointer("pointermove", 1, 150, 100)); // drag right → view shifts left
+      cap.dispatchEvent(pointer("pointerup", 1, 150, 100));
+      screen.tick(1000 / 60);
+      const panned = renderer.cameraCalls.at(-1)!.center;
+      expect(panned.x).toBeCloseTo(centreBefore.x - 50 / 32);
+      expect(panned.y).toBeCloseTo(centreBefore.y);
+
+      (controlsRoot.querySelector(".play-restart-button") as HTMLElement).click();
+      screen.tick(1000 / 60);
+      expect(renderer.cameraCalls.at(-1)!.center).toEqual(centreBefore);
+    });
+
+    it("two-finger pinch zooms about the midpoint", () => {
+      const { screen, controlsRoot, renderer } = mount(away());
+      const cap = capture(controlsRoot);
+      screen.tick(1000 / 60);
+
+      cap.dispatchEvent(pointer("pointerdown", 1, 100, 100));
+      cap.dispatchEvent(pointer("pointerdown", 2, 200, 100));
+      cap.dispatchEvent(pointer("pointermove", 2, 300, 100)); // spread → distance doubles
+      screen.tick(1000 / 60);
+      expect(renderer.cameraCalls.at(-1)?.zoom).toBeCloseTo(2);
+
+      cap.dispatchEvent(pointer("pointerup", 2, 300, 100));
+      cap.dispatchEvent(pointer("pointerup", 1, 100, 100));
+    });
+  });
+
   it("cleans up DOM on dispose", () => {
     const { screen, controlsRoot } = mount(level({ a: { x: 30, y: -3 }, b: { x: 30, y: 3 }, outward: { x: 1, y: 0 } }));
     screen.dispose();
     expect(controlsRoot.querySelector("#steering-indicator")).toBeNull();
     expect(controlsRoot.querySelector(".play-back-button")).toBeNull();
+    expect(controlsRoot.querySelector(".play-capture")).toBeNull();
+    expect(controlsRoot.querySelector(".play-recenter-button")).toBeNull();
   });
 });

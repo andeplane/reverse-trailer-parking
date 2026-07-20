@@ -28,6 +28,15 @@ machine** in `src/game/screens/` (`AppShell`) over one shared Phaser surface —
   HUD: transient goal/controls banner at start, ↺ Restart + ☰ Menu buttons, a
   run-timer (with par), and a screen-edge ➤ arrow toward the exit when the
   follow-camera has it off-screen (`Renderer.worldToScreen`).
+  **Free-look camera** (`play-camera.ts`, pure): the camera still follows the rig,
+  but a full-screen `.play-capture` layer (below the HUD) lets the player zoom
+  (wheel / two-finger pinch, **anchored so the point under the cursor/midpoint
+  stays fixed**) and drag-pan an offset that **rides along with the rig**; a ⌖
+  recenter button appears when adjusted, Restart clears the pan (keeps zoom), and
+  min zoom is clamped to fit the whole map (`view/camera-fit.ts` `fitZoom`, shared
+  with the editor — the editor's wheel zoom is cursor-anchored too). The camera
+  hook is injected into the sandbox (`camera:` arg) instead of its default
+  `renderer.follow`.
   **Crash damage** (`vehicle/damage.ts`): each impact charges 4·v² points from
   the speed into the contact normal, only on the clear→contact edge (grinding =
   one hit) and never below the 0.5 m/s dead-zone; a HUD health bar drains, and

@@ -34,6 +34,7 @@ import {
   type TileType,
 } from "../level/tile-types";
 import { BAY_LINE_WIDTH, tileGroundTexture } from "../view/tile-decor";
+import { fitZoom, PIXELS_PER_METRE } from "../view/camera-fit";
 import { worldToLayers } from "../view/world-view";
 import { worldToDebugEntities } from "../view/debug-view";
 import { allCarVariants } from "../vehicle/variants";
@@ -68,7 +69,6 @@ function stripEntity(id: string, a: Vec2, b: Vec2, width: Metres, color: number,
   };
 }
 
-const PIXELS_PER_METRE = 32; // must match create-phaser-surface
 const HALF_PI = Math.PI / 2;
 /** R rotates in 30° steps, clockwise on screen (issue: "rotate the other way"). */
 const CAR_ROTATE_STEP = (-Math.PI / 6) as Radians;
@@ -587,7 +587,15 @@ export function createEditorScreen(args: {
   function onWheel(e: Event): void {
     const we = e as WheelEvent;
     we.preventDefault();
-    camera.zoom *= we.deltaY < 0 ? 1.1 : 1 / 1.1;
+    // Zoom about the cursor: the world point under the pointer stays fixed on screen.
+    const anchor = worldAt(we.clientX, we.clientY);
+    const oldZoom = camera.zoom;
+    camera.zoom = Math.min(8, Math.max(0.1, camera.zoom * (we.deltaY < 0 ? 1.1 : 1 / 1.1)));
+    const s = oldZoom / camera.zoom;
+    camera.center = {
+      x: anchor.x + (camera.center.x - anchor.x) * s,
+      y: anchor.y + (camera.center.y - anchor.y) * s,
+    };
   }
 
   function onContextMenu(e: Event): void {
@@ -947,8 +955,3 @@ function add(a: Vec2, b: Vec2): Vec2 {
   return { x: a.x + b.x, y: a.y + b.y };
 }
 
-function fitZoom(widthMetres: number, heightMetres: number): number {
-  const vw = typeof window !== "undefined" ? window.innerWidth : 1000;
-  const vh = typeof window !== "undefined" ? window.innerHeight : 800;
-  return Math.min(vw / (widthMetres * PIXELS_PER_METRE), vh / (heightMetres * PIXELS_PER_METRE)) * 0.92;
-}

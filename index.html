@@ -372,6 +372,37 @@
       .win-buttons .win-next {
         background: linear-gradient(180deg, #2f7fd6, #2565ad);
       }
+      /* Full-screen camera-gesture layer (drag pans, wheel/pinch zooms); HUD sits on top. */
+      .play-capture {
+        position: absolute;
+        inset: 0;
+        touch-action: none;
+        cursor: grab;
+      }
+      .play-capture:active {
+        cursor: grabbing;
+      }
+      .play-recenter-button {
+        position: absolute;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        top: max(128px, calc(env(safe-area-inset-top, 0px) + 112px)); /* below the timer pill */
+        left: 16px;
+        width: 44px;
+        height: 44px;
+        border: 2px solid rgba(255, 255, 255, 0.25);
+        border-radius: 50%;
+        background: rgba(28, 30, 34, 0.6);
+        color: #fff;
+        font: 600 22px system-ui, sans-serif;
+        line-height: 1;
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .play-recenter-button.visible {
+        display: flex;
+      }
       .play-back-button,
       .play-restart-button {
         position: absolute;
