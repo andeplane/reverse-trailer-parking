@@ -35,6 +35,12 @@ export interface DifficultyParams {
   islandsMax: number;
   looseCarsMin: number;
   looseCarsMax: number;
+  /**
+   * Ceiling on the fraction of interior non-corridor cells still plain asphalt after decoration
+   * (1 = no fill). Open space is what lets the player ignore the intended corridor and U-turn in
+   * an empty field, so lower = the corridor is closer to the only route.
+   */
+  maxOpenFraction: number;
 }
 
 const DEG = Math.PI / 180;
@@ -57,6 +63,7 @@ const PARAMS: Record<Difficulty, DifficultyParams> = {
     islandsMax: 2,
     looseCarsMin: 0,
     looseCarsMax: 0,
+    maxOpenFraction: 1,
   },
   medium: {
     cols: 14,
@@ -75,6 +82,7 @@ const PARAMS: Record<Difficulty, DifficultyParams> = {
     islandsMax: 2,
     looseCarsMin: 0,
     looseCarsMax: 1,
+    maxOpenFraction: 0.55,
   },
   hard: {
     cols: 16,
@@ -93,6 +101,7 @@ const PARAMS: Record<Difficulty, DifficultyParams> = {
     islandsMax: 3,
     looseCarsMin: 1,
     looseCarsMax: 3,
+    maxOpenFraction: 0.32,
   },
 };
 

@@ -141,8 +141,14 @@ shadow, car placements via exact OBB-vs-swept-OBB SAT with the local margin):
    pinches). Parked cars in bays never tow (a towed rig doesn't fit a 5 m bay); only **loose cars**
    (hard) may tow, placed parallel along edges.
 3. **Loose parked cars** (hard: 1–3) axis-aligned near edges.
-4. **Curbs** along remaining grass↔asphalt boundaries (not the access road).
-5. **Trees** on ring grass, ≥ 3 tiles apart, ≤ ~6 per level (sparse is the built-ins' style).
+4. **Open-space fill** (medium/hard). After the scenery pass, keep dropping curbed islands on
+   interior non-corridor asphalt until the open fraction (plain asphalt / interior non-corridor
+   cells) is ≤ `maxOpenFraction` (medium 0.55, hard 0.32; best-effort — reserved bay aisles stay
+   open). Without this the lot outside the corridor is an empty field: the player just U-turns in
+   the open and never meets the pinch points, so hard plays easy. Adjacent islands merge (no curb
+   between green cells; the shared edge's older curb is removed).
+5. **Curbs** along remaining grass↔asphalt boundaries (not the access road).
+6. **Trees** on ring grass, ≥ 3 tiles apart, ≤ ~6 per level (sparse is the built-ins' style).
 
 **Pinch enforcement (difficulty guarantee).** After decoration, sample free width along the
 corridor. Required: ≥ 2 (medium) / ≥ 3 (hard) pinch points where total corridor width ≤
@@ -167,6 +173,7 @@ This turns difficulty from an expected value into a guarantee.
 | Extra straight run-in | 4 m | 1 m | 0 m |
 | Grass islands | 1–2 | 1–2 | 2–3 |
 | Loose cars | 0 | 0–1 | 1–3 |
+| Max open fraction (fill) | 1 (no fill) | 0.55 | 0.32 |
 
 Player rig: always the **red sedan + white caravan** (game identity). Par:
 `parSeconds = clamp(ceil(1.6 × replaySeconds), max(20, arc/2.4), 180)` rounded up to 5 s

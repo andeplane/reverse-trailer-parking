@@ -77,6 +77,16 @@ Legacy saves with `curb`/`curb-corner` tiles migrate on parse (outline of edge c
 on asphalt). Built-in levels are code (`built-in-levels.ts`, `fallback-level.ts`);
 custom editor levels persist to localStorage.
 
+**Random levels** (`src/game/level/random/`, design: `specs/003-random-levels/design.md`):
+seeded + deterministic, provably solvable — a reverse drive-in records the hidden solution,
+a margin-inflated **corridor** protects it, decoration fills around it, and a physics
+**replay must win** before the level ships. Difficulty = per-difficulty params
+(`difficulty.ts`) with two GUARANTEES, not tendencies: (1) **pinch points** — tight
+squeezes enforced along the corridor; (2) **`maxOpenFraction`** — open-space fill keeps
+dropping curbed islands until interior non-corridor asphalt is ≤ the ceiling (medium 0.55,
+hard 0.32). The fill exists because pinches alone are avoidable in an open lot (a wide-open
+map lets the player U-turn anywhere and hard plays easy — learned from playtest feedback).
+
 **Editor UX** (issues hardened by an agent-browser e2e pass): topbar has the level
 **name input** (selects on focus) and **cols×rows map-size inputs** (resize keeps
 content glued, re-snaps the exit, drops outside cars), zoom ± and a **⛶ fit-view**

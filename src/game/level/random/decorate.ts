@@ -288,6 +288,15 @@ function tryPlaceIsland(args: {
       const inside =
         nc >= spec.col && nc < spec.col + spec.w && nr >= spec.row && nr < spec.row + spec.h;
       if (inside) continue;
+      // No curb against another green cell — adjacent islands merge into one shape (also drop
+      // the older island's curb on the now-shared edge).
+      const neighbourType = tileAt(state.grid, nc, nr)?.type;
+      if (neighbourType === "grass" || neighbourType === "hedge" || neighbourType === "tree") {
+        if (!isRing(state.grid, nc, nr)) {
+          state.grid = withCurb(state.grid, sideEdge(cell.col, cell.row, n.side), false);
+        }
+        continue;
+      }
       const edge = sideEdge(cell.col, cell.row, n.side);
       const strip = curbStripObb(state.grid, cell, n);
       if (!corridorIntersectsObb(corridor, strip)) {
@@ -432,6 +441,60 @@ function decorateLooseCars(args: {
       })
     ) {
       placed++;
+    }
+  }
+}
+
+/**
+ * Fraction of interior non-corridor cells that are still plain asphalt. This is the "escape room"
+ * a player can use to bypass the intended corridor entirely, so it is a difficulty measure.
+ */
+export function openFraction(grid: TileGrid, corridor: Corridor): number {
+  let open = 0;
+  let total = 0;
+  for (let row = 1; row < grid.rows - 1; row++) {
+    for (let col = 1; col < grid.cols - 1; col++) {
+      if (corridor.cellShadow.has(cellIndex(grid, col, row))) continue;
+      total++;
+      if (isPlainAsphalt(grid, col, row)) open++;
+    }
+  }
+  return total === 0 ? 0 : open / total;
+}
+
+const FILL_ATTEMPTS = 400;
+
+/**
+ * Consume leftover open asphalt with curbed islands until the difficulty's openness ceiling is
+ * met (best-effort: reserved bay aisles stay open, so the ceiling may not be exactly reachable).
+ * Without this, everything outside the corridor is an empty field and the guaranteed pinch
+ * points are trivially avoidable.
+ */
+function fillOpenSpace(args: {
+  state: DecorState;
+  corridor: Corridor;
+  params: DifficultyParams;
+  rng: Rng;
+}): void {
+  const { state, corridor, params, rng } = args;
+  if (params.maxOpenFraction >= 1) return;
+  for (let attempt = 0; attempt < FILL_ATTEMPTS; attempt++) {
+    if (openFraction(state.grid, corridor) <= params.maxOpenFraction) return;
+    const fillable: { col: number; row: number }[] = [];
+    for (let row = 1; row < state.grid.rows - 1; row++) {
+      for (let col = 1; col < state.grid.cols - 1; col++) {
+        if (!isPlainAsphalt(state.grid, col, row)) continue;
+        const idx = cellIndex(state.grid, col, row);
+        if (corridor.cellShadow.has(idx) || state.reservedAisle.has(idx)) continue;
+        fillable.push({ col, row });
+      }
+    }
+    if (fillable.length === 0) return;
+    const cell = rngPick(rng, fillable);
+    const w = rngInt({ rng, min: 1, max: 3 });
+    const h = rngInt({ rng, min: 1, max: 3 });
+    if (!tryPlaceIsland({ state, corridor, rng, spec: { col: cell.col, row: cell.row, w, h } })) {
+      tryPlaceIsland({ state, corridor, rng, spec: { col: cell.col, row: cell.row, w: 1, h: 1 } });
     }
   }
 }
@@ -626,6 +689,7 @@ export function decorate(args: {
   decorateIslands({ state, corridor, params, rng });
   decorateBayRows({ state, corridor, catalog, rng });
   decorateLooseCars({ state, corridor, catalog, params, rng, boundary });
+  fillOpenSpace({ state, corridor, params, rng });
   decorateRingCurbs(state, corridor);
   decorateTrees(state, rng);
 
