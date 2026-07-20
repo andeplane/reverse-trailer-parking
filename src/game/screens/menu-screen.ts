@@ -125,6 +125,11 @@ export function createMenuScreen(args: {
     name.className = "menu-level-name";
     name.textContent = "🎲 Random level";
     card.appendChild(name);
+    // The card shows the chosen difficulty so the picker below is clearly connected to it.
+    const badge = document.createElement("span");
+    badge.className = "menu-level-badge";
+    badge.textContent = difficulty;
+    card.appendChild(badge);
     card.addEventListener("click", () => {
       card.disabled = true;
       name.textContent = "Generating…";
@@ -145,6 +150,7 @@ export function createMenuScreen(args: {
       option.textContent = d.charAt(0).toUpperCase() + d.slice(1);
       option.addEventListener("click", () => {
         difficulty = d;
+        badge.textContent = d;
         for (const [key, el] of options) el.classList.toggle("selected", key === d);
         args.onDifficultyChange?.(d);
       });
