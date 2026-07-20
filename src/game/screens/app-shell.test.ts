@@ -55,7 +55,7 @@ function fakeStorage(): LevelStorage {
   };
 }
 
-function makeApp(storage?: LevelStorage) {
+function makeApp(storage?: LevelStorage, drawSeed?: () => number) {
   controlsRoot = document.createElement("div");
   document.body.appendChild(controlsRoot);
   const renderer = fakeRenderer();
@@ -66,7 +66,7 @@ function makeApp(storage?: LevelStorage) {
     catalog,
     levels: [level("a"), level("b")],
     isTouch: false,
-    drawSeed: () => 1, // deterministic random levels in tests
+    drawSeed: drawSeed ?? (() => 1), // deterministic random levels in tests
     ...(storage ? { storage } : {}),
   });
   return { app, renderer, controlsRoot };
@@ -194,6 +194,24 @@ describe("createApp", () => {
     app.showMenu();
     const selected = controlsRoot.querySelector(".menu-difficulty-option.selected") as HTMLElement;
     expect(selected.dataset.difficulty).toBe("medium");
+  });
+
+  it("falls back to the menu (never bricks) when generation fails", () => {
+    const { app, controlsRoot } = makeApp(undefined, () => {
+      throw new Error("no seed source");
+    });
+    app.playRandomLevel("easy");
+    expect(controlsRoot.querySelector(".menu-screen")).not.toBeNull();
+    expect((controlsRoot.querySelector(".menu-random-card") as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("ignores a corrupt stored difficulty and pre-selects easy", () => {
+    const storage = fakeStorage();
+    storage.setItem("parking.randomDifficulty", "bananas");
+    const { app, controlsRoot } = makeApp(storage);
+    app.showMenu();
+    const selected = controlsRoot.querySelector(".menu-difficulty-option.selected") as HTMLElement;
+    expect(selected.dataset.difficulty).toBe("easy");
   });
 
   it("menu difficulty clicks persist without playing", () => {

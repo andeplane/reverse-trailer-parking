@@ -77,6 +77,37 @@ export function createApp(args: {
     app.showMenu(); // re-list (a deleted override reveals its bundled original again)
   }
 
+  /** Generate a verified random level; re-draws the seed a couple of times before giving up
+   * (a single draw failing is already near-impossible — 16 internal attempts per seed). */
+  function generateRandom(difficulty: Difficulty): Level | null {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const seed = (drawSeed() + attempt * 7919) >>> 0; // offset so a same-ms redraw differs
+        return generateRandomLevel({ seed, difficulty, catalog }).level;
+      } catch {
+        // try another seed
+      }
+    }
+    return null;
+  }
+
+  /** Generation is synchronous and can take ~a second on a phone. The win overlay's
+   * "Play another ▸" goes through this: paint a Generating… overlay (which also swallows
+   * double-taps), then generate on the next tick so the feedback is visible first. */
+  function playRandomDeferred(difficulty: Difficulty): void {
+    const overlay = document.createElement("div");
+    overlay.className = "generating-overlay";
+    overlay.textContent = "Generating level…";
+    controlsRoot.appendChild(overlay);
+    setTimeout(() => {
+      try {
+        app.playRandomLevel(difficulty);
+      } finally {
+        overlay.remove();
+      }
+    }, 30);
+  }
+
   function savedDifficulty(): Difficulty {
     const raw = storage?.getItem(DIFFICULTY_KEY);
     return raw !== null && raw !== undefined && isDifficulty(raw) ? raw : "easy";
@@ -171,7 +202,13 @@ export function createApp(args: {
       saveDifficulty(difficulty);
       // NOT via playLevel: random levels are session-only (never in the level list), and the win
       // overlay's next action re-generates at the same difficulty rather than advancing a list.
-      const { level } = generateRandomLevel({ seed: drawSeed() >>> 0, difficulty, catalog });
+      const level = generateRandom(difficulty);
+      if (!level) {
+        // Never brick the UI on a pathological draw — fall back to the menu (which also
+        // restores the random card from its "Generating…" state).
+        app.showMenu();
+        return;
+      }
       swap(
         createPlayScreen({
           clock,
@@ -180,7 +217,7 @@ export function createApp(args: {
           level,
           catalog,
           onExitToMenu: () => app.showMenu(),
-          onNextLevel: () => app.playRandomLevel(difficulty),
+          onNextLevel: () => playRandomDeferred(difficulty),
           nextLabel: "Play another ▸",
           isLastLevel: false,
           ...(isTouch !== undefined ? { isTouch } : {}),

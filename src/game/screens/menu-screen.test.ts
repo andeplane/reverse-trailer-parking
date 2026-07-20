@@ -156,6 +156,20 @@ describe("createMenuScreen", () => {
     }
   });
 
+  it("cancels a pending generate when disposed before the timer fires", () => {
+    vi.useFakeTimers();
+    try {
+      const played: Difficulty[] = [];
+      const { screen, parent } = mount([], { onPlayRandom: (d) => played.push(d) });
+      (parent.querySelector(".menu-random-card") as HTMLElement).click();
+      screen.dispose();
+      vi.runAllTimers();
+      expect(played).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("pre-selects the initial difficulty and reports changes", () => {
     const changes: Difficulty[] = [];
     const { parent } = mount([], {
