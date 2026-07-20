@@ -179,8 +179,12 @@ describe("createMenuScreen", () => {
     });
     const options = parent.querySelectorAll<HTMLButtonElement>(".menu-difficulty-option");
     expect(options[1]?.classList.contains("selected")).toBe(true);
+    // The card badge mirrors the selection so the picker is visibly tied to the card.
+    const badge = parent.querySelector(".menu-random-card .menu-level-badge");
+    expect(badge?.textContent).toBe("medium");
     options[0]?.click();
     expect(changes).toEqual(["easy"]);
+    expect(badge?.textContent).toBe("easy");
   });
 
   it("removes its DOM on dispose", () => {
