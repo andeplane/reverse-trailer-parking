@@ -38,8 +38,9 @@ async function main(): Promise<void> {
     renderer: createPhaserRenderer({ surface }),
     controlsRoot,
     catalog,
-    levels: builtInLevels(), // custom (editor) levels merge on top from storage
+    levels: builtInLevels(), // kept for old b.<id> share URLs; the menu lists packs + customs
     storage: window.localStorage,
+    enableAttract: true, // menu background: the autopilot solves random levels
   });
   // A shared `?level=` URL (random seed, bundled id, or full custom level) boots straight into
   // that level; otherwise start at the menu.

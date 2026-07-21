@@ -8,6 +8,8 @@ export interface WinOverlay {
 export function createWinOverlay(args: {
   parent: HTMLElement;
   levelName: string;
+  /** Stars earned this run (0–3); omitted for levels that don't track stars. */
+  stars?: number;
   /** Pre-formatted run time line, e.g. "Time 0:42 · par 1:30". */
   timeText?: string;
   /** True when there is no next level — celebrate finishing the list. */
@@ -18,7 +20,7 @@ export function createWinOverlay(args: {
   onRetry: () => void;
   onMenu: () => void;
 }): WinOverlay {
-  const { parent, levelName, timeText, isLastLevel, onNext, onRetry, onMenu } = args;
+  const { parent, levelName, stars, timeText, isLastLevel, onNext, onRetry, onMenu } = args;
 
   const root = document.createElement("div");
   root.className = "win-overlay";
@@ -33,6 +35,23 @@ export function createWinOverlay(args: {
   subtitle.className = "win-subtitle";
   subtitle.textContent = levelName;
   panel.append(title, subtitle);
+  if (stars !== undefined) {
+    const row = document.createElement("div");
+    row.className = "win-stars";
+    for (let i = 0; i < 3; i++) {
+      const star = document.createElement("span");
+      star.className = i < stars ? "win-star earned" : "win-star";
+      star.textContent = "★";
+      row.appendChild(star);
+    }
+    panel.appendChild(row);
+    if (stars < 3) {
+      const hint = document.createElement("p");
+      hint.className = "win-star-hint";
+      hint.textContent = "Beat par without a scratch for 3 stars";
+      panel.appendChild(hint);
+    }
+  }
   if (timeText) {
     const time = document.createElement("p");
     time.className = "win-time";

@@ -16,12 +16,27 @@ Design/ADR: `specs/002-levels-editor/design.md`. The app is a **DOM screen state
 machine** in `src/game/screens/` (`AppShell`) over one shared Phaser surface —
 **not** Phaser Scenes (Phaser stays confined to `src/engine/render/`):
 
-- **Menu** (`menu-screen.ts`) lists levels (built-ins easiest-first); every level
-  has an ✎ **edit** action (editing a built-in saves a custom override shown as
-  "modified" with a ↺ restore action), pure custom levels get 🗑 delete via an
-  **inline two-step confirm (🗑 → "Sure?")** + a "custom" badge; "＋ New level"
-  opens a blank editor with a **unique default name**. **NEVER use native browser
-  popups (alert/confirm/prompt)** — always in-app UI.
+- **Menu** (`menu-screen.ts`) is a **level-pack home screen**: a hero title +
+  **total-star chip**, then one **endless pack per difficulty** (Easy/Medium/Hard,
+  accordion — one open at a time, first open by default). A pack level is **just a
+  deterministic seed** (`level/packs.ts` `packLevelSeed(difficulty, index)` —
+  NEVER change the hash, star progress is keyed by its output via
+  `starKey` = the `r.<difficulty>.<seed36>` share payload). Tiles show 0–3
+  earned-star pips; "More ▾" pages another 12 (`PACK_PAGE_SIZE`) forever.
+  **Stars** (`level/stars.ts`): 3 = ≤ par AND **damage-free** (any crash caps the
+  run at 2), 2 = ≤ 1.5·par, 1 = finished; best per seed-key persists in
+  localStorage (`level/progress-store.ts`, only ever raises).
+  The play screen computes/reports them via its `onStars` arg; the win overlay
+  shows them. Custom (editor) levels are listed under a **"Custom levels"**
+  section with ✎ edit + 🗑 delete via an **inline two-step confirm (🗑 →
+  "Sure?")**; "＋ New level" opens a blank editor with a **unique default name**.
+  The two old bundled levels are **no longer listed** (kept in code only so old
+  `b.<id>` share URLs still resolve). Behind the menu an **autopilot attract
+  demo** (`screens/attract-mode.ts`, `enableAttract` in `createApp`) generates a
+  random level, records the generator's closed-loop verification drive
+  (`replaySolutionReverse`'s `onStep` hook), and plays it back in real time —
+  disabled in tests (generation is expensive). **NEVER use native browser popups
+  (alert/confirm/prompt)** — always in-app UI.
 - **Play** (`play-screen.ts`) drives a level via the sandbox, detects the **win**
   (car AND trailer fully cross the exit's outward half-plane — `level/win.ts`),
   and shows a win overlay (with run time; celebrates when it was the last level).

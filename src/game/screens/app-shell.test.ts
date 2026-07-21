@@ -7,6 +7,7 @@ import type { Vec2 } from "../../engine/math/vec2";
 import { allCarVariants, allTrailerVariants, createVariantCatalog } from "../vehicle/variants";
 import type { Level } from "../level/level-types";
 import { saveCustomLevel, type LevelStorage } from "../level/level-store";
+import { packLevelSeed, starKey } from "../level/packs";
 import { encodeLevelRef, parseLevelRef } from "../level/share-url";
 import { createApp } from "./app-shell";
 
@@ -89,24 +90,45 @@ function makeApp(storage?: LevelStorage, drawSeed?: () => number) {
 }
 
 describe("createApp", () => {
-  it("shows the menu with a card per level", () => {
+  it("shows the pack menu — three packs, star chip, no bundled level cards", () => {
     const { app, controlsRoot } = makeApp();
     app.showMenu();
-    expect(controlsRoot.querySelectorAll(".menu-level-card")).toHaveLength(2);
+    expect(controlsRoot.querySelectorAll(".menu-pack")).toHaveLength(3);
+    expect(controlsRoot.querySelector(".menu-total-stars")?.textContent).toBe("★ 0");
+    expect(controlsRoot.querySelectorAll(".menu-level-card")).toHaveLength(0); // bundled are URL-only now
+    expect(controlsRoot.querySelector(".menu-attract-badge")).toBeNull(); // attract is opt-in
   });
 
-  it("switches to play when a level card is clicked, and drives the world on tick", () => {
+  it("plays a pack level from its tile and writes its seed share URL", { timeout: 60_000 }, async () => {
     const { app, controlsRoot, renderer } = makeApp();
-    app.showMenu();
-    (controlsRoot.querySelector(".menu-level-card") as HTMLElement).click();
+    app.playPackLevel("easy", 0);
     expect(controlsRoot.querySelector(".menu-screen")).toBeNull();
     expect(controlsRoot.querySelector(".play-back-button")).not.toBeNull();
     app.tick(1000 / 60);
     expect(renderer.syncs.length).toBeGreaterThan(0);
+    expect(controlsRoot.querySelector(".play-timer")?.textContent).toContain("par");
+    await flushUrl();
+    const seed36 = packLevelSeed({ difficulty: "easy", index: 0 }).toString(36);
+    expect(window.location.search).toBe(`?level=r.easy.${seed36}`);
+  });
+
+  it("shows earned stars on the menu (chip, pack header, tile pips)", () => {
+    const storage = fakeStorage();
+    const key = starKey({ difficulty: "easy", seed: packLevelSeed({ difficulty: "easy", index: 1 }) });
+    storage.setItem("parking.stars", JSON.stringify({ [key]: 2, "r.hard.zzz": 3 }));
+    const { app, controlsRoot } = makeApp(storage);
+    app.showMenu();
+    expect(controlsRoot.querySelector(".menu-total-stars")?.textContent).toBe("★ 5");
+    const easyPack = controlsRoot.querySelector(".menu-pack-easy")!;
+    expect(easyPack.querySelector(".menu-pack-stars")?.textContent).toBe("★ 2");
+    const tile2 = easyPack.querySelectorAll(".menu-pack-level")[1]!;
+    expect(tile2.querySelectorAll(".menu-star.earned")).toHaveLength(2);
   });
 
   it("returns to the menu from the play back button", () => {
-    const { app, controlsRoot } = makeApp();
+    const storage = fakeStorage();
+    saveCustomLevel(level("mine"), storage);
+    const { app, controlsRoot } = makeApp(storage);
     app.showMenu();
     (controlsRoot.querySelector(".menu-level-card") as HTMLElement).click();
     (controlsRoot.querySelector(".play-back-button") as HTMLElement).click();
@@ -114,7 +136,7 @@ describe("createApp", () => {
     expect(controlsRoot.querySelector(".play-back-button")).toBeNull();
   });
 
-  it("clears the world render when returning to the menu", () => {
+  it("clears the world render when showing the menu", () => {
     const { app, renderer } = makeApp();
     app.showMenu();
     expect(renderer.syncs.at(-1)).toEqual([]); // cleared
@@ -129,30 +151,40 @@ describe("createApp", () => {
     expect(controlsRoot.querySelector(".editor-screen")).toBeNull();
   });
 
-  it("merges custom levels from storage on top of bundled ones", () => {
+  it("lists custom levels (including bundled overrides) under Custom levels", () => {
     const storage = fakeStorage();
     saveCustomLevel({ ...level("a"), name: "a (custom)" }, storage);
     saveCustomLevel(level("mine"), storage);
     const { app, controlsRoot } = makeApp(storage);
     app.showMenu();
     const cards = [...controlsRoot.querySelectorAll(".menu-level-card")];
-    expect(cards).toHaveLength(3); // a (overridden), b, mine
+    expect(cards).toHaveLength(2); // the two customs; pristine bundled levels are not listed
     expect(cards.find((c) => (c as HTMLElement).dataset.levelId === "a")?.textContent).toContain("a (custom)");
   });
 
-  it("opens an existing level in the editor and deletes a custom level from the menu", () => {
+  it("plays a custom level from its card and chains Next through the custom list", () => {
+    const storage = fakeStorage();
+    saveCustomLevel(level("mine-1"), storage);
+    saveCustomLevel(level("mine-2"), storage);
+    const { app, controlsRoot } = makeApp(storage);
+    app.showMenu();
+    (controlsRoot.querySelector('.menu-level-card[data-level-id="mine-1"]') as HTMLElement).click();
+    expect(controlsRoot.querySelector(".play-back-button")).not.toBeNull();
+  });
+
+  it("opens an existing custom level in the editor and deletes one from the menu", () => {
     const storage = fakeStorage();
     saveCustomLevel(level("mine"), storage);
     const { app, controlsRoot } = makeApp(storage);
     app.showMenu();
     (controlsRoot.querySelector(".menu-level-edit") as HTMLElement).click();
-    expect((controlsRoot.querySelector(".editor-name") as HTMLInputElement).value).toBe("a");
+    expect((controlsRoot.querySelector(".editor-name") as HTMLInputElement).value).toBe("mine");
 
     app.showMenu();
     const del = controlsRoot.querySelector(".menu-level-delete") as HTMLElement;
     del.click(); // arm the inline confirm
     del.click(); // confirm
-    expect(controlsRoot.querySelectorAll(".menu-level-card")).toHaveLength(2); // mine is gone
+    expect(controlsRoot.querySelectorAll(".menu-level-card")).toHaveLength(0); // mine is gone
   });
 
   it("saving in the editor persists to storage and shows on the menu", () => {
@@ -202,55 +234,16 @@ describe("createApp", () => {
     expect(controlsRoot.querySelector(".play-timer")?.textContent).toContain("par");
   });
 
-  it("persists the last random difficulty and pre-selects it on the menu", { timeout: 60_000 }, () => {
-    const storage = fakeStorage();
-    const { app, controlsRoot } = makeApp(storage);
-    app.playRandomLevel("medium");
-    expect(storage.getItem("parking.randomDifficulty")).toBe("medium");
-    app.showMenu();
-    const selected = controlsRoot.querySelector(".menu-difficulty-option.selected") as HTMLElement;
-    expect(selected.dataset.difficulty).toBe("medium");
-  });
-
   it("falls back to the menu (never bricks) when generation fails", () => {
     const { app, controlsRoot } = makeApp(undefined, () => {
       throw new Error("no seed source");
     });
     app.playRandomLevel("easy");
     expect(controlsRoot.querySelector(".menu-screen")).not.toBeNull();
-    expect((controlsRoot.querySelector(".menu-random-card") as HTMLButtonElement).disabled).toBe(false);
-  });
-
-  it("ignores a corrupt stored difficulty and pre-selects easy", () => {
-    const storage = fakeStorage();
-    storage.setItem("parking.randomDifficulty", "bananas");
-    const { app, controlsRoot } = makeApp(storage);
-    app.showMenu();
-    const selected = controlsRoot.querySelector(".menu-difficulty-option.selected") as HTMLElement;
-    expect(selected.dataset.difficulty).toBe("easy");
-  });
-
-  it("menu difficulty clicks persist without playing", () => {
-    const storage = fakeStorage();
-    const { app, controlsRoot } = makeApp(storage);
-    app.showMenu();
-    (controlsRoot.querySelector('[data-difficulty="hard"]') as HTMLElement).click();
-    expect(storage.getItem("parking.randomDifficulty")).toBe("hard");
   });
 
   describe("share URLs (?level=)", () => {
-    it("playing a bundled level writes ?level=b.<id>, and the menu clears it", async () => {
-      const { app } = makeApp();
-      app.showMenu();
-      (controlsRoot!.querySelector(".menu-level-card") as HTMLElement).click();
-      await flushUrl();
-      expect(window.location.search).toBe("?level=b.a");
-      app.showMenu();
-      await flushUrl();
-      expect(window.location.search).toBe("");
-    });
-
-    it("playing a custom level writes its full encoded JSON", async () => {
+    it("playing a custom level writes its full encoded JSON, and the menu clears it", async () => {
       const storage = fakeStorage();
       saveCustomLevel(level("mine"), storage);
       const { app } = makeApp(storage);
@@ -262,16 +255,19 @@ describe("createApp", () => {
       const parsed = await parseLevelRef(value);
       expect(parsed?.kind).toBe("custom");
       expect(parsed?.kind === "custom" && parsed.level.id).toBe("mine");
+      app.showMenu();
+      await flushUrl();
+      expect(window.location.search).toBe("");
     });
 
-    it("playing a random level writes ?level=r.<difficulty>.<seed36>", async () => {
+    it("playing a random level writes ?level=r.<difficulty>.<seed36>", { timeout: 60_000 }, async () => {
       const { app } = makeApp(undefined, () => parseInt("cwilu", 36));
       app.playRandomLevel("easy");
       await flushUrl();
       expect(window.location.search).toBe("?level=r.easy.cwilu");
     });
 
-    it("openFromUrl replays the exact random level a shared seed refers to", async () => {
+    it("openFromUrl replays the exact random level a shared seed refers to", { timeout: 60_000 }, async () => {
       const { app } = makeApp(undefined, () => {
         throw new Error("must not draw a fresh seed for a shared one");
       });
@@ -282,7 +278,19 @@ describe("createApp", () => {
       expect(window.location.search).toBe("?level=r.easy.cwilu"); // same seed round-trips
     });
 
-    it("openFromUrl plays a bundled level by id and rejects unknown ids", async () => {
+    it("openFromUrl routes a shared pack seed into the pack flow", { timeout: 60_000 }, async () => {
+      const seed = packLevelSeed({ difficulty: "easy", index: 0 });
+      const { app } = makeApp(undefined, () => {
+        throw new Error("must not draw a fresh seed for a shared one");
+      });
+      const opened = await app.openFromUrl(`?level=r.easy.${seed.toString(36)}`);
+      expect(opened).toBe(true);
+      expect(controlsRoot!.querySelector(".play-back-button")).not.toBeNull();
+      await flushUrl();
+      expect(window.location.search).toBe(`?level=r.easy.${seed.toString(36)}`);
+    });
+
+    it("openFromUrl plays a bundled level by id (old links) and rejects unknown ids", async () => {
       const { app } = makeApp();
       expect(await app.openFromUrl("?level=b.nope")).toBe(false);
       expect(await app.openFromUrl("?level=b.b")).toBe(true);

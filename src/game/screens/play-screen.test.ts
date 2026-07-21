@@ -52,7 +52,7 @@ function level(exit: Level["exit"]): Level {
 let controlsRoot: HTMLElement | undefined;
 afterEach(() => controlsRoot?.remove());
 
-function mount(lvl: Level, onExitToMenu = () => {}, onNextLevel?: () => void) {
+function mount(lvl: Level, onExitToMenu = () => {}, onNextLevel?: () => void, onStars?: (stars: number) => void) {
   controlsRoot = document.createElement("div");
   document.body.appendChild(controlsRoot);
   const renderer = fakeRenderer();
@@ -65,6 +65,7 @@ function mount(lvl: Level, onExitToMenu = () => {}, onNextLevel?: () => void) {
     onExitToMenu,
     isTouch: false,
     ...(onNextLevel ? { onNextLevel } : {}),
+    ...(onStars ? { onStars } : {}),
   });
   return { screen, controlsRoot, renderer };
 }
@@ -127,6 +128,28 @@ describe("createPlayScreen", () => {
     );
     screen.tick(1000 / 60);
     expect(controlsRoot.querySelector(".win-next")).not.toBeNull();
+  });
+
+  it("reports and displays stars on a tracked win (instant finish under par → 3)", () => {
+    const reported: number[] = [];
+    const { screen, controlsRoot } = mount(
+      level({ a: { x: 5, y: -30 }, b: { x: 5, y: 30 }, outward: { x: -1, y: 0 } }),
+      () => {},
+      undefined,
+      (stars) => reported.push(stars),
+    );
+    screen.tick(1000 / 60);
+    expect(reported).toEqual([3]);
+    expect(controlsRoot.querySelectorAll(".win-star.earned")).toHaveLength(3);
+  });
+
+  it("shows no stars row on an untracked win (no onStars)", () => {
+    const { screen, controlsRoot } = mount(
+      level({ a: { x: 5, y: -30 }, b: { x: 5, y: 30 }, outward: { x: -1, y: 0 } }),
+    );
+    screen.tick(1000 / 60);
+    expect(controlsRoot.querySelector(".win-overlay")).not.toBeNull();
+    expect(controlsRoot.querySelector(".win-stars")).toBeNull();
   });
 
   it("freezes the sim after winning (no further ticks advance it)", () => {
