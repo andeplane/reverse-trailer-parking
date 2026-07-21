@@ -103,14 +103,17 @@ export function replaySolutionReverse(args: {
   catalog: VariantCatalog;
   /** Corridor margin multiplier used when the level was decorated (relax-and-retry). */
   marginScale?: number;
+  /** Observes every stepped world (the initial state first) — e.g. the menu's autopilot demo. */
+  onStep?: (world: World) => void;
 }): ReplayResult {
-  const { level, path, params, catalog } = args;
+  const { level, path, params, catalog, onStep } = args;
   const marginScale = args.marginScale ?? 1;
   const dt = PLAY_DT;
   const samples = path.samples;
   if (samples.length < 2 || !level.exit) return { won: false, seconds: 0, reason: "timeout" };
 
   let world = levelToWorld(level, catalog);
+  onStep?.(world);
   const fastStep = makeFastStepper(world);
   const carVariant = findCarVariant(catalog, level.drivable.variantId);
   const steerMax = carVariant.steerMax;
@@ -183,6 +186,7 @@ export function replaySolutionReverse(args: {
 
     const before = drivableCar(world).rearAxle;
     world = fastStep(world, { throttle, steer: steer / steerMax });
+    onStep?.(world);
     const after = drivableCar(world);
     const moved = Math.hypot(after.rearAxle.x - before.x, after.rearAxle.y - before.y);
     sExpected = Math.max(sExpected - moved, -20);

@@ -11,6 +11,7 @@ import type { Level } from "../level/level-types";
 import { levelToWorld } from "../level/level-to-world";
 import { applyDebugState, debugStateOf, encodeDebugState, parseDebugState } from "../level/debug-state";
 import { hasRigCrossedExit } from "../level/win";
+import { starsForRun } from "../level/stars";
 import { rigFootprints } from "../collision/collision-system";
 import { createSandbox, type Sandbox } from "../sandbox";
 import { drivableCar, toRig, type VariantCatalog } from "../vehicle/vehicle-types";
@@ -44,9 +45,12 @@ export function createPlayScreen(args: {
   nextLabel?: string;
   /** True when this is the last level in the list (win overlay celebrates finishing everything). */
   isLastLevel?: boolean;
+  /** When set, a win computes stars (`starsForRun`), reports them here, and shows them in the
+   * win overlay. Left unset for levels that don't track stars (custom/editor levels). */
+  onStars?: (stars: number) => void;
   isTouch?: boolean;
 }): Screen {
-  const { clock, renderer, controlsRoot, level, catalog, onExitToMenu, onNextLevel, isLastLevel } = args;
+  const { clock, renderer, controlsRoot, level, catalog, onExitToMenu, onNextLevel, isLastLevel, onStars } = args;
   const isTouch =
     args.isTouch ?? (window.matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0);
 
@@ -335,9 +339,19 @@ export function createPlayScreen(args: {
       level.parSeconds !== undefined
         ? `Time ${formatTime(elapsedSeconds())} · par ${formatTime(level.parSeconds)}`
         : `Time ${formatTime(elapsedSeconds())}`;
+    let stars: number | undefined;
+    if (onStars) {
+      stars = starsForRun({
+        elapsedSeconds: elapsedSeconds(),
+        damage: world.damage,
+        ...(level.parSeconds !== undefined ? { parSeconds: level.parSeconds } : {}),
+      });
+      onStars(stars);
+    }
     winOverlay = createWinOverlay({
       parent: controlsRoot,
       levelName: level.name,
+      ...(stars !== undefined ? { stars } : {}),
       timeText,
       isLastLevel: isLastLevel ?? false,
       ...(onNextLevel ? { onNext: onNextLevel } : {}),
@@ -345,7 +359,8 @@ export function createPlayScreen(args: {
       onRetry: () => {
         winOverlay?.dispose();
         winOverlay = null;
-        sandbox.reset();
+        reset(); // full reset — a replay's time/stars must not include the previous run
+        updateHealth();
       },
       onMenu: onExitToMenu,
     });

@@ -6,7 +6,14 @@ let parent: HTMLElement | undefined;
 afterEach(() => parent?.remove());
 
 function mount(
-  opts: { onNext?: () => void; onRetry?: () => void; onMenu?: () => void; isLastLevel?: boolean; nextLabel?: string } = {},
+  opts: {
+    onNext?: () => void;
+    onRetry?: () => void;
+    onMenu?: () => void;
+    isLastLevel?: boolean;
+    nextLabel?: string;
+    stars?: number;
+  } = {},
 ) {
   parent = document.createElement("div");
   document.body.appendChild(parent);
@@ -18,6 +25,7 @@ function mount(
     ...(opts.onNext ? { onNext: opts.onNext } : {}),
     ...(opts.isLastLevel !== undefined ? { isLastLevel: opts.isLastLevel } : {}),
     ...(opts.nextLabel !== undefined ? { nextLabel: opts.nextLabel } : {}),
+    ...(opts.stars !== undefined ? { stars: opts.stars } : {}),
   });
   return { overlay, parent };
 }
@@ -63,6 +71,23 @@ describe("createWinOverlay", () => {
     done.parent.remove();
     const mid = mount({ isLastLevel: false });
     expect(mid.parent.querySelector(".win-finished")).toBeNull();
+  });
+
+  it("shows earned stars out of three, with a par hint below 3", () => {
+    const { parent } = mount({ stars: 2 });
+    const pips = [...parent.querySelectorAll(".win-star")];
+    expect(pips).toHaveLength(3);
+    expect(pips.map((p) => p.classList.contains("earned"))).toEqual([true, true, false]);
+    expect(parent.querySelector(".win-star-hint")?.textContent).toContain("par");
+  });
+
+  it("drops the par hint at 3 stars, and shows no stars row when untracked", () => {
+    const three = mount({ stars: 3 });
+    expect(three.parent.querySelectorAll(".win-star.earned")).toHaveLength(3);
+    expect(three.parent.querySelector(".win-star-hint")).toBeNull();
+    three.parent.remove();
+    const untracked = mount();
+    expect(untracked.parent.querySelector(".win-stars")).toBeNull();
   });
 
   it("removes its DOM on dispose", () => {

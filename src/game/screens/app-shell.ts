@@ -2,14 +2,17 @@ import type { Clock } from "../../engine/loop/clock";
 import type { Renderer } from "../../engine/render/renderer";
 import { emptyLevel } from "../level/editor-model";
 import type { Level } from "../level/level-types";
-import { isDifficulty, type Difficulty } from "../level/random/difficulty";
+import { ALL_DIFFICULTIES, type Difficulty } from "../level/random/difficulty";
 import { generateRandomLevel } from "../level/random/generate-level";
 import { deleteCustomLevel, loadCustomLevels, mergeLevels, saveCustomLevel, type LevelStorage } from "../level/level-store";
+import { packIndexOfSeed, packLevelName, packLevelSeed, PACK_PAGE_SIZE, PACK_SCAN_LIMIT, starKey } from "../level/packs";
+import { loadStars, recordStars, totalStars } from "../level/progress-store";
 import { encodeLevelRef, LEVEL_PARAM, MAX_URL_LENGTH, parseLevelRef, type LevelShareRef } from "../level/share-url";
 import { validateLevel } from "../level/level-validate";
 import type { VariantCatalog } from "../vehicle/vehicle-types";
+import { createAttractMode } from "./attract-mode";
 import { createEditorScreen } from "./editor-screen";
-import { createMenuScreen } from "./menu-screen";
+import { createMenuScreen, type MenuPack } from "./menu-screen";
 import { createPlayScreen } from "./play-screen";
 import type { Screen } from "./screen";
 
@@ -18,6 +21,8 @@ export interface App {
   tick(frameMs?: number): void;
   showMenu(): void;
   playLevel(level: Level): void;
+  /** Play pack level `index` (0-based) of the given difficulty's endless pack. */
+  playPackLevel(difficulty: Difficulty, index: number): void;
   /** Generate a seeded random level at the given difficulty and play it (fresh seed if omitted). */
   playRandomLevel(difficulty: Difficulty, seed?: number): void;
   /** Route straight into the level a shared `?level=` URL refers to; false if absent/invalid. */
@@ -27,27 +32,28 @@ export interface App {
   dispose(): void;
 }
 
-const DIFFICULTY_KEY = "parking.randomDifficulty";
-
 /**
  * The app shell: a small state machine over screens (menu / play / editor) sharing one renderer.
  * It never runs its own animation loop — the host calls `tick()` each frame — which keeps it
- * unit-testable. Switching screens disposes the previous one and clears the world render.
- * `levels` are the bundled levels; custom (editor-authored) levels merge on top from storage and
- * can be edited/deleted from the menu. Testing an editor draft returns to the editor, not the menu.
+ * unit-testable. The menu lists the three endless seed-based level packs (easy/medium/hard) plus
+ * custom (editor-authored) levels from storage; star progress persists per level seed. Bundled
+ * levels are no longer listed but still resolve from old `b.` share URLs. Testing an editor
+ * draft returns to the editor, not the menu.
  */
 export function createApp(args: {
   clock: Clock;
   renderer: Renderer;
   controlsRoot: HTMLElement;
   catalog: VariantCatalog;
-  /** Bundled (built-in) levels; custom levels from storage merge on top by id. */
+  /** Bundled (built-in) levels; kept for `b.` share-URL routing (not listed in the menu). */
   levels: Level[];
   isTouch?: boolean;
-  /** Persistence for editor-authored levels (localStorage in the app). */
+  /** Persistence for editor-authored levels + star progress (localStorage in the app). */
   storage?: LevelStorage;
   /** Seed source for random levels (injected in tests; defaults to a time-based draw). */
   drawSeed?: () => number;
+  /** Runs the menu's autopilot background demo (off in tests — generation is expensive). */
+  enableAttract?: boolean;
 }): App {
   const { clock, renderer, controlsRoot, catalog, isTouch, storage } = args;
   const drawSeed = args.drawSeed ?? ((): number => Date.now() % 0x7fffffff);
@@ -78,12 +84,13 @@ export function createApp(args: {
   }
   function deleteLevel(level: Level): void {
     if (storage) deleteCustomLevel(level.id, storage);
-    app.showMenu(); // re-list (a deleted override reveals its bundled original again)
+    app.showMenu(); // re-list
   }
 
   /** Generate a verified random level; re-draws the seed a couple of times before giving up
    * (a single draw failing is already near-impossible — 16 internal attempts per seed). An
-   * explicit seed (a shared URL) gets exactly one try so the URL and the map never diverge. */
+   * explicit seed (a pack level or shared URL) gets exactly one try so the seed and the map
+   * never diverge. */
   function generateRandom(difficulty: Difficulty, fixedSeed?: number): { level: Level; seed: number } | null {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
@@ -119,34 +126,30 @@ export function createApp(args: {
       });
   }
 
-  /** Generation is synchronous and can take ~a second on a phone. The win overlay's
-   * "Play another ▸" goes through this: paint a Generating… overlay (which also swallows
-   * double-taps), then generate on the next tick so the feedback is visible first. */
-  function playRandomDeferred(difficulty: Difficulty): void {
+  /** Generation is synchronous and can take ~a second on a phone. Win-overlay "next" actions go
+   * through this: paint a Generating… overlay (which also swallows double-taps), then generate
+   * on the next tick so the feedback is visible first. */
+  function deferGenerating(launch: () => void): void {
     const overlay = document.createElement("div");
     overlay.className = "generating-overlay";
     overlay.textContent = "Generating level…";
     controlsRoot.appendChild(overlay);
     setTimeout(() => {
       try {
-        app.playRandomLevel(difficulty);
+        launch();
       } finally {
         overlay.remove();
       }
     }, 30);
   }
 
-  function savedDifficulty(): Difficulty {
-    const raw = storage?.getItem(DIFFICULTY_KEY);
-    return raw !== null && raw !== undefined && isDifficulty(raw) ? raw : "easy";
-  }
-  function saveDifficulty(difficulty: Difficulty): void {
-    storage?.setItem(DIFFICULTY_KEY, difficulty);
+  function recordRunStars(difficulty: Difficulty, seed: number, stars: number): void {
+    if (storage) recordStars({ storage, key: starKey({ difficulty, seed }), stars });
   }
 
   function clearWorld(): void {
     renderer.sync([]);
-    renderer.follow({ x: 0, y: 0 });
+    renderer.setCamera({ x: 0, y: 0 }, 1); // also undoes the attract demo's fit-zoom
   }
 
   function swap(next: Screen): void {
@@ -188,6 +191,34 @@ export function createApp(args: {
     );
   }
 
+  /** Menu pack views: earned stars + progress-derived visible count, from one storage read. */
+  function packViews(): MenuPack[] {
+    const stars = storage ? loadStars(storage) : {};
+    return ALL_DIFFICULTIES.map((difficulty) => {
+      let earnedStars = 0;
+      let highestCompleted = -1;
+      const byIndex: number[] = [];
+      for (let index = 0; index < PACK_SCAN_LIMIT; index++) {
+        const earned = stars[starKey({ difficulty, seed: packLevelSeed({ difficulty, index }) })] ?? 0;
+        byIndex.push(earned);
+        if (earned > 0) {
+          earnedStars += earned;
+          highestCompleted = index;
+        }
+      }
+      const initialCount = Math.min(
+        PACK_SCAN_LIMIT,
+        Math.max(PACK_PAGE_SIZE, Math.ceil((highestCompleted + 2) / PACK_PAGE_SIZE) * PACK_PAGE_SIZE),
+      );
+      return {
+        difficulty,
+        earnedStars,
+        initialCount,
+        starsFor: (index: number) => byIndex[index] ?? 0,
+      };
+    });
+  }
+
   const app: App = {
     tick(frameMs?: number): void {
       active?.tick(frameMs);
@@ -195,30 +226,32 @@ export function createApp(args: {
     showMenu(): void {
       clearWorld();
       writeUrl(null);
-      const levels = allLevels();
       swap(
         createMenuScreen({
           parent: controlsRoot,
-          levels,
-          customIds: new Set(customLevels().map((l) => l.id)),
-          bundledIds: new Set(bundled.map((l) => l.id)),
+          totalStars: storage ? totalStars(storage) : 0,
+          packs: packViews(),
+          onPlayPackLevel: (difficulty, index) => app.playPackLevel(difficulty, index),
+          customLevels: customLevels(),
           onPlay: (level) => app.playLevel(level),
           onEdit: (level?: Level) => app.openEditor(level),
           onDelete: (level) => deleteLevel(level),
-          onPlayRandom: (difficulty) => app.playRandomLevel(difficulty),
-          initialDifficulty: savedDifficulty(),
-          onDifficultyChange: (difficulty) => saveDifficulty(difficulty),
+          ...(args.enableAttract
+            ? { attract: createAttractMode({ renderer, catalog, seed: drawSeed() }) }
+            : {}),
         }),
       );
     },
     playLevel(level: Level): void {
-      const levels = allLevels();
-      const index = levels.findIndex((l) => l.id === level.id);
-      const next = index >= 0 ? levels[index + 1] : undefined;
+      // Custom levels chain to the next custom level; bundled (URL-opened) ones to bundled.
+      const customs = customLevels();
+      const list = customs.some((l) => l.id === level.id) ? customs : allLevels();
+      const index = list.findIndex((l) => l.id === level.id);
+      const next = index >= 0 ? list[index + 1] : undefined;
       // A pristine bundled level shares by id; anything else (custom, edited override, one-off
       // from a shared URL) must carry its full JSON so recipients without it can play it.
       const isPristineBundled =
-        bundled.some((b) => b.id === level.id) && !customLevels().some((c) => c.id === level.id);
+        bundled.some((b) => b.id === level.id) && !customs.some((c) => c.id === level.id);
       writeUrl(isPristineBundled ? { kind: "bundled", id: level.id } : { kind: "custom", level });
       swap(
         createPlayScreen({
@@ -234,14 +267,41 @@ export function createApp(args: {
         }),
       );
     },
-    playRandomLevel(difficulty: Difficulty, seed?: number): void {
-      saveDifficulty(difficulty);
-      // NOT via playLevel: random levels are session-only (never in the level list), and the win
-      // overlay's next action re-generates at the same difficulty rather than advancing a list.
+    playPackLevel(difficulty: Difficulty, index: number): void {
+      const seed = packLevelSeed({ difficulty, index });
       const generated = generateRandom(difficulty, seed);
       if (!generated) {
-        // Never brick the UI on a pathological draw — fall back to the menu (which also
-        // restores the random card from its "Generating…" state).
+        // Never brick the UI on a pathological seed — fall back to the menu.
+        app.showMenu();
+        return;
+      }
+      writeUrl({ kind: "random", difficulty, seed });
+      swap(
+        createPlayScreen({
+          clock,
+          renderer,
+          controlsRoot,
+          level: { ...generated.level, name: packLevelName({ difficulty, index }) },
+          catalog,
+          onExitToMenu: () => app.showMenu(),
+          onNextLevel: () => deferGenerating(() => app.playPackLevel(difficulty, index + 1)),
+          isLastLevel: false, // packs are endless
+          onStars: (stars) => recordRunStars(difficulty, seed, stars),
+          ...(isTouch !== undefined ? { isTouch } : {}),
+        }),
+      );
+    },
+    playRandomLevel(difficulty: Difficulty, seed?: number): void {
+      // A shared seed that is actually a pack level opens with its pack name + next-level flow.
+      if (seed !== undefined) {
+        const packIndex = packIndexOfSeed({ difficulty, seed });
+        if (packIndex !== null) {
+          app.playPackLevel(difficulty, packIndex);
+          return;
+        }
+      }
+      const generated = generateRandom(difficulty, seed);
+      if (!generated) {
         app.showMenu();
         return;
       }
@@ -254,9 +314,10 @@ export function createApp(args: {
           level: generated.level,
           catalog,
           onExitToMenu: () => app.showMenu(),
-          onNextLevel: () => playRandomDeferred(difficulty),
+          onNextLevel: () => deferGenerating(() => app.playRandomLevel(difficulty)),
           nextLabel: "Play another ▸",
           isLastLevel: false,
+          onStars: (stars) => recordRunStars(difficulty, generated.seed, stars),
           ...(isTouch !== undefined ? { isTouch } : {}),
         }),
       );

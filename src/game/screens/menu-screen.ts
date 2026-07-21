@@ -1,36 +1,46 @@
 import type { Level } from "../level/level-types";
-import { ALL_DIFFICULTIES, type Difficulty } from "../level/random/difficulty";
+import { PACK_PAGE_SIZE } from "../level/packs";
+import { MAX_STARS } from "../level/stars";
+import type { Difficulty } from "../level/random/difficulty";
+import type { AttractMode } from "./attract-mode";
 import type { Screen } from "./screen";
 
 /**
- * The main menu: a DOM overlay listing playable levels plus a "New level" editor entry. Every
- * level can be opened in the editor (editing a built-in saves a custom copy over it); custom
- * (editor-authored) levels can also be deleted — via an inline two-step confirm (🗑 → "Sure?"),
- * NEVER a native browser popup. Purely DOM (testable under jsdom); the world render is cleared
- * by the app before showing it.
+ * The main menu: total-star header, one endless level pack per difficulty (numbered seed-levels
+ * with earned-star pips, expandable accordion + "More" paging), and a "Custom levels" section
+ * with the editor entries. An optional autopilot attract-mode demo plays behind it (the menu
+ * drives and disposes it). Purely DOM (testable under jsdom); custom-level deletes use an inline
+ * two-step confirm (🗑 → "Sure?"), NEVER a native browser popup.
  */
+
+export interface MenuPack {
+  difficulty: Difficulty;
+  /** Best stars for pack level `index` (0-based); 0 = not completed yet. */
+  starsFor(index: number): number;
+  /** Stars already earned across this pack (shown on the pack card). */
+  earnedStars: number;
+  /** Level tiles shown before "More" is pressed (covers the player's progress). */
+  initialCount: number;
+}
+
+const PACK_LABELS: Record<Difficulty, string> = { easy: "Easy", medium: "Medium", hard: "Hard" };
+
 export function createMenuScreen(args: {
   parent: HTMLElement;
-  levels: Level[];
-  /** Ids of custom (editor-authored) levels — these get a delete action. */
-  customIds?: ReadonlySet<string>;
-  /** Ids of bundled levels — a custom level with a bundled id is an override ("modified"),
-   * and deleting it restores the original rather than destroying anything. */
-  bundledIds?: ReadonlySet<string>;
+  /** Sum of best stars across every level — the ★ chip under the title. */
+  totalStars: number;
+  packs: MenuPack[];
+  onPlayPackLevel: (difficulty: Difficulty, index: number) => void;
+  /** Custom (editor-authored) levels, grouped under "Custom levels". */
+  customLevels: Level[];
   onPlay: (level: Level) => void;
   /** Open the editor: with a level to edit it, without to start a new one. */
   onEdit: (level?: Level) => void;
   onDelete?: (level: Level) => void;
-  /** Enables the 🎲 random-level card with its Easy|Medium|Hard segmented control. */
-  onPlayRandom?: (difficulty: Difficulty) => void;
-  /** Pre-selected difficulty (the player's last choice). */
-  initialDifficulty?: Difficulty;
-  /** Called whenever the player picks a difficulty (so the app can persist it). */
-  onDifficultyChange?: (difficulty: Difficulty) => void;
+  /** Autopilot background demo; ownership transfers to the menu (ticked + disposed here). */
+  attract?: AttractMode;
 }): Screen {
-  const { parent, levels, onPlay, onEdit, onDelete } = args;
-  const customIds = args.customIds ?? new Set<string>();
-  const bundledIds = args.bundledIds ?? new Set<string>();
+  const { parent, packs, onPlayPackLevel, customLevels, onPlay, onEdit, onDelete, attract } = args;
 
   // At most one delete button is in its armed ("Sure?") state; clicking anywhere else disarms it.
   let disarmActiveDelete: (() => void) | null = null;
@@ -46,14 +56,121 @@ export function createMenuScreen(args: {
   const root = document.createElement("div");
   root.className = "menu-screen";
 
+  const hero = document.createElement("div");
+  hero.className = "menu-hero";
   const title = document.createElement("h1");
   title.className = "menu-title";
   title.textContent = "Reverse Trailer Parking";
-  root.appendChild(title);
+  const starChip = document.createElement("div");
+  starChip.className = "menu-total-stars";
+  starChip.textContent = `★ ${args.totalStars}`;
+  starChip.title = "Total stars earned";
+  hero.append(title, starChip);
+  root.appendChild(hero);
+
+  // Generation is synchronous (~a second on a phone); a clicked tile defers one tick so its
+  // "…" state can paint before the freeze. One shared timer — one launch at a time.
+  let launchTimer: ReturnType<typeof setTimeout> | undefined;
+  let launching = false;
+
+  function starPips(earned: number): HTMLElement {
+    const pips = document.createElement("span");
+    pips.className = "menu-star-pips";
+    for (let i = 0; i < MAX_STARS; i++) {
+      const pip = document.createElement("span");
+      pip.className = i < earned ? "menu-star earned" : "menu-star";
+      pip.textContent = "★";
+      pips.appendChild(pip);
+    }
+    return pips;
+  }
+
+  const packsRoot = document.createElement("div");
+  packsRoot.className = "menu-packs";
+  const packSections: { el: HTMLElement; open(v: boolean): void }[] = [];
+
+  for (const pack of packs) {
+    const section = document.createElement("section");
+    section.className = `menu-pack menu-pack-${pack.difficulty}`;
+
+    const header = document.createElement("button");
+    header.type = "button";
+    header.className = "menu-pack-header";
+    header.dataset.difficulty = pack.difficulty;
+    const name = document.createElement("span");
+    name.className = "menu-pack-name";
+    name.textContent = PACK_LABELS[pack.difficulty];
+    const packStars = document.createElement("span");
+    packStars.className = "menu-pack-stars";
+    packStars.textContent = `★ ${pack.earnedStars}`;
+    const chevron = document.createElement("span");
+    chevron.className = "menu-pack-chevron";
+    chevron.textContent = "▸";
+    header.append(name, packStars, chevron);
+    section.appendChild(header);
+
+    const grid = document.createElement("div");
+    grid.className = "menu-pack-grid";
+    section.appendChild(grid);
+
+    let count = 0;
+    const more = document.createElement("button");
+    more.type = "button";
+    more.className = "menu-pack-more";
+    more.textContent = "More ▾";
+
+    function addTiles(upTo: number): void {
+      more.remove();
+      for (let index = count; index < upTo; index++) {
+        const tile = document.createElement("button");
+        tile.type = "button";
+        tile.className = "menu-pack-level";
+        tile.dataset.index = String(index);
+        const num = document.createElement("span");
+        num.className = "menu-pack-level-num";
+        num.textContent = String(index + 1);
+        tile.append(num, starPips(pack.starsFor(index)));
+        tile.addEventListener("click", () => {
+          if (launching) return;
+          launching = true;
+          tile.classList.add("generating");
+          num.textContent = "…";
+          launchTimer = setTimeout(() => onPlayPackLevel(pack.difficulty, index), 30);
+        });
+        grid.appendChild(tile);
+      }
+      count = upTo;
+      grid.appendChild(more); // endless pack — there is always more
+    }
+    more.addEventListener("click", () => addTiles(count + PACK_PAGE_SIZE));
+    addTiles(Math.max(PACK_PAGE_SIZE, pack.initialCount));
+
+    const openSection = (open: boolean): void => {
+      section.classList.toggle("open", open);
+      chevron.textContent = open ? "▾" : "▸";
+    };
+    header.addEventListener("click", () => {
+      const willOpen = !section.classList.contains("open");
+      for (const other of packSections) other.open(false);
+      openSection(willOpen);
+    });
+    packSections.push({ el: section, open: openSection });
+    packsRoot.appendChild(section);
+  }
+  // The first pack starts open so a new player sees Level 1 immediately.
+  packSections[0]?.open(true);
+  root.appendChild(packsRoot);
+
+  const custom = document.createElement("section");
+  custom.className = "menu-custom";
+  const customHeader = document.createElement("h2");
+  customHeader.className = "menu-custom-header";
+  customHeader.textContent = "Custom levels";
+  custom.appendChild(customHeader);
 
   const list = document.createElement("div");
   list.className = "menu-levels";
-  for (const level of levels) {
+  for (const level of customLevels) {
     const row = document.createElement("div");
     row.className = "menu-level-row";
 
@@ -65,13 +182,6 @@ export function createMenuScreen(args: {
     name.className = "menu-level-name";
     name.textContent = level.name;
     card.appendChild(name);
-    const isOverride = customIds.has(level.id) && bundledIds.has(level.id);
-    if (customIds.has(level.id)) {
-      const badge = document.createElement("span");
-      badge.className = "menu-level-badge";
-      badge.textContent = isOverride ? "modified" : "custom";
-      card.appendChild(badge);
-    }
     card.addEventListener("click", () => onPlay(level));
     row.appendChild(card);
 
@@ -83,12 +193,12 @@ export function createMenuScreen(args: {
     edit.addEventListener("click", () => onEdit(level));
     row.appendChild(edit);
 
-    if (customIds.has(level.id) && onDelete) {
+    if (onDelete) {
       const del = document.createElement("button");
       del.type = "button";
       del.className = "menu-level-action menu-level-delete";
-      del.title = isOverride ? `Remove changes to “${level.name}” (restores the original)` : `Delete “${level.name}”`;
-      del.textContent = isOverride ? "↺" : "🗑";
+      del.title = `Delete “${level.name}”`;
+      del.textContent = "🗑";
       del.addEventListener("click", () => {
         if (del.classList.contains("confirm")) {
           onDelete(level);
@@ -99,82 +209,39 @@ export function createMenuScreen(args: {
         del.textContent = "Sure?";
         disarmActiveDelete = () => {
           del.classList.remove("confirm");
-          del.textContent = isOverride ? "↺" : "🗑";
+          del.textContent = "🗑";
         };
       });
       row.appendChild(del);
     }
     list.appendChild(row);
   }
-  root.appendChild(list);
-
-  // 🎲 Random level: a card + segmented difficulty control. Generation is synchronous, so the
-  // click defers one tick to let "Generating…" paint before the app freezes for ~a second.
-  let randomTimer: ReturnType<typeof setTimeout> | undefined;
-  if (args.onPlayRandom) {
-    const onPlayRandom = args.onPlayRandom;
-    let difficulty: Difficulty = args.initialDifficulty ?? "easy";
-
-    const randomSection = document.createElement("div");
-    randomSection.className = "menu-random";
-
-    const card = document.createElement("button");
-    card.type = "button";
-    card.className = "menu-random-card";
-    const name = document.createElement("span");
-    name.className = "menu-level-name";
-    name.textContent = "🎲 Random level";
-    card.appendChild(name);
-    // The card shows the chosen difficulty so the picker below is clearly connected to it.
-    const badge = document.createElement("span");
-    badge.className = "menu-level-badge";
-    badge.textContent = difficulty;
-    card.appendChild(badge);
-    card.addEventListener("click", () => {
-      card.disabled = true;
-      name.textContent = "Generating…";
-      randomTimer = setTimeout(() => onPlayRandom(difficulty), 30);
-    });
-    randomSection.appendChild(card);
-
-    const segmented = document.createElement("div");
-    segmented.className = "menu-difficulty";
-    segmented.setAttribute("role", "group");
-    segmented.setAttribute("aria-label", "Random level difficulty");
-    const options = new Map<Difficulty, HTMLButtonElement>();
-    for (const d of ALL_DIFFICULTIES) {
-      const option = document.createElement("button");
-      option.type = "button";
-      option.className = "menu-difficulty-option";
-      option.dataset.difficulty = d;
-      option.textContent = d.charAt(0).toUpperCase() + d.slice(1);
-      option.addEventListener("click", () => {
-        difficulty = d;
-        badge.textContent = d;
-        for (const [key, el] of options) el.classList.toggle("selected", key === d);
-        args.onDifficultyChange?.(d);
-      });
-      options.set(d, option);
-      segmented.appendChild(option);
-    }
-    options.get(difficulty)?.classList.add("selected");
-    randomSection.appendChild(segmented);
-    root.appendChild(randomSection);
-  }
+  custom.appendChild(list);
 
   const editButton = document.createElement("button");
   editButton.type = "button";
   editButton.className = "menu-edit-button";
   editButton.textContent = "＋ New level";
   editButton.addEventListener("click", () => onEdit());
-  root.appendChild(editButton);
+  custom.appendChild(editButton);
+  root.appendChild(custom);
+
+  if (attract) {
+    const badge = document.createElement("div");
+    badge.className = "menu-attract-badge";
+    badge.textContent = "🤖 autopilot demo";
+    root.appendChild(badge);
+  }
 
   parent.appendChild(root);
 
   return {
-    tick(): void {},
+    tick(frameMs?: number): void {
+      attract?.tick(frameMs);
+    },
     dispose(): void {
-      clearTimeout(randomTimer);
+      clearTimeout(launchTimer);
+      attract?.dispose();
       document.removeEventListener("pointerdown", onDocPointerDown);
       root.remove();
     },
