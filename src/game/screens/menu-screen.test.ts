@@ -37,6 +37,8 @@ function mount(
   hooks: {
     totalStars?: number;
     packs?: MenuPack[];
+    openPack?: Difficulty | null;
+    onOpenPackChange?: (d: Difficulty | null) => void;
     customLevels?: Level[];
     onPlayPackLevel?: (d: Difficulty, i: number) => void;
     onPlay?: (l: Level) => void;
@@ -51,6 +53,8 @@ function mount(
     parent,
     totalStars: hooks.totalStars ?? 0,
     packs: hooks.packs ?? ALL_PACKS,
+    ...(hooks.openPack !== undefined ? { openPack: hooks.openPack } : {}),
+    ...(hooks.onOpenPackChange ? { onOpenPackChange: hooks.onOpenPackChange } : {}),
     customLevels: hooks.customLevels ?? [],
     onPlayPackLevel: hooks.onPlayPackLevel ?? (() => {}),
     onPlay: hooks.onPlay ?? (() => {}),
@@ -88,6 +92,28 @@ describe("createMenuScreen", () => {
     expect(parent.querySelector(".menu-pack-hard")?.classList.contains("open")).toBe(true);
     headers[2]!.click(); // toggling the open one closes it
     expect(parent.querySelectorAll(".menu-pack.open")).toHaveLength(0);
+  });
+
+  it("opens the requested pack instead of the first one", () => {
+    const { parent } = mount({ openPack: "hard" });
+    const open = parent.querySelectorAll(".menu-pack.open");
+    expect(open).toHaveLength(1);
+    expect(open[0]?.classList.contains("menu-pack-hard")).toBe(true);
+  });
+
+  it("opens no pack when asked for none", () => {
+    const { parent } = mount({ openPack: null });
+    expect(parent.querySelectorAll(".menu-pack.open")).toHaveLength(0);
+  });
+
+  it("reports which pack the player expanded or collapsed", () => {
+    const onOpenPackChange = vi.fn();
+    const { parent } = mount({ onOpenPackChange });
+    const headers = parent.querySelectorAll<HTMLElement>(".menu-pack-header");
+    headers[2]!.click();
+    expect(onOpenPackChange).toHaveBeenLastCalledWith("hard");
+    headers[2]!.click();
+    expect(onOpenPackChange).toHaveBeenLastCalledWith(null);
   });
 
   it("renders earned-star pips per tile and the pack's star total", () => {

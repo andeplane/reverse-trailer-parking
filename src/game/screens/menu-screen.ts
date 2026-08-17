@@ -30,6 +30,10 @@ export function createMenuScreen(args: {
   /** Sum of best stars across every level — the ★ chip under the title. */
   totalStars: number;
   packs: MenuPack[];
+  /** Which pack starts expanded (`null` = all collapsed); defaults to the first pack. */
+  openPack?: Difficulty | null;
+  /** Fires whenever the player expands/collapses a pack, so the shell can restore it next time. */
+  onOpenPackChange?: (difficulty: Difficulty | null) => void;
   onPlayPackLevel: (difficulty: Difficulty, index: number) => void;
   /** Custom (editor-authored) levels, grouped under "Custom levels". */
   customLevels: Level[];
@@ -40,7 +44,7 @@ export function createMenuScreen(args: {
   /** Autopilot background demo; ownership transfers to the menu (ticked + disposed here). */
   attract?: AttractMode;
 }): Screen {
-  const { parent, packs, onPlayPackLevel, customLevels, onPlay, onEdit, onDelete, attract } = args;
+  const { parent, packs, onPlayPackLevel, onOpenPackChange, customLevels, onPlay, onEdit, onDelete, attract } = args;
 
   // At most one delete button is in its armed ("Sure?") state; clicking anywhere else disarms it.
   let disarmActiveDelete: (() => void) | null = null;
@@ -87,7 +91,7 @@ export function createMenuScreen(args: {
 
   const packsRoot = document.createElement("div");
   packsRoot.className = "menu-packs";
-  const packSections: { el: HTMLElement; open(v: boolean): void }[] = [];
+  const packSections: { difficulty: Difficulty; open(v: boolean): void }[] = [];
 
   for (const pack of packs) {
     const section = document.createElement("section");
@@ -153,12 +157,15 @@ export function createMenuScreen(args: {
       const willOpen = !section.classList.contains("open");
       for (const other of packSections) other.open(false);
       openSection(willOpen);
+      onOpenPackChange?.(willOpen ? pack.difficulty : null);
     });
-    packSections.push({ el: section, open: openSection });
+    packSections.push({ difficulty: pack.difficulty, open: openSection });
     packsRoot.appendChild(section);
   }
-  // The first pack starts open so a new player sees Level 1 immediately.
-  packSections[0]?.open(true);
+  // The remembered pack re-opens on every return to the menu; a new player starts on the first
+  // pack so Level 1 is right there.
+  const initiallyOpen = args.openPack === undefined ? packs[0]?.difficulty ?? null : args.openPack;
+  packSections.find((s) => s.difficulty === initiallyOpen)?.open(true);
   root.appendChild(packsRoot);
 
   const custom = document.createElement("section");

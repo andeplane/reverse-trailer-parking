@@ -18,7 +18,9 @@ machine** in `src/game/screens/` (`AppShell`) over one shared Phaser surface —
 
 - **Menu** (`menu-screen.ts`) is a **level-pack home screen**: a hero title +
   **total-star chip**, then one **endless pack per difficulty** (Easy/Medium/Hard,
-  accordion — one open at a time, first open by default). A pack level is **just a
+  accordion — one open at a time, first open by default; the **app shell remembers
+  which pack is open** (`openPack`/`onOpenPackChange`) and playing a level opens its
+  pack, so returning to the menu never snaps back to Easy). A pack level is **just a
   deterministic seed** (`level/packs.ts` `packLevelSeed(difficulty, index)` —
   NEVER change the hash, star progress is keyed by its output via
   `starKey` = the `r.<difficulty>.<seed36>` share payload). Tiles show 0–3

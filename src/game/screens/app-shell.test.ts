@@ -125,6 +125,26 @@ describe("createApp", () => {
     expect(tile2.querySelectorAll(".menu-star.earned")).toHaveLength(2);
   });
 
+  it("re-opens the pack the player had expanded when returning to the menu", () => {
+    const storage = fakeStorage();
+    saveCustomLevel(level("mine"), storage);
+    const { app, controlsRoot } = makeApp(storage);
+    app.showMenu();
+    (controlsRoot.querySelector(".menu-pack-hard .menu-pack-header") as HTMLElement).click();
+    (controlsRoot.querySelector(".menu-level-card") as HTMLElement).click();
+    (controlsRoot.querySelector(".play-back-button") as HTMLElement).click();
+    const open = controlsRoot.querySelectorAll(".menu-pack.open");
+    expect(open).toHaveLength(1);
+    expect(open[0]?.classList.contains("menu-pack-hard")).toBe(true);
+  });
+
+  it("opens the pack a played level came from", { timeout: 30_000 }, () => {
+    const { app, controlsRoot } = makeApp();
+    app.playPackLevel("medium", 0);
+    (controlsRoot.querySelector(".play-back-button") as HTMLElement).click();
+    expect(controlsRoot.querySelector(".menu-pack-medium")?.classList.contains("open")).toBe(true);
+  });
+
   it("returns to the menu from the play back button", () => {
     const storage = fakeStorage();
     saveCustomLevel(level("mine"), storage);
