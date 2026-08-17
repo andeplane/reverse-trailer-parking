@@ -5,7 +5,7 @@ import type { Obb } from "../../engine/math/obb";
 import type { ControlInput } from "../../engine/input/input-source";
 import { obstacleFootprints, resolveRigCollision } from "../collision/collision-system";
 import { damagePointsForImpact } from "./damage";
-import { stepRig } from "./vehicle-model";
+import { stepRigWithStatus } from "./vehicle-model";
 import {
   drivableCar,
   fromRig,
@@ -58,6 +58,7 @@ export function createWorld(args: {
     catalog: args.catalog,
     damage: 0,
     rigInContact: false,
+    rigJackknifed: false,
   };
 }
 
@@ -85,12 +86,14 @@ export function createInitialRig(args: {
  * Advances only the drivable rig via `stepRig`, then resolves collision against every placed car
  * (and its trailer) and the boundary so the rig can never overlap or tunnel through them. Placed
  * cars are immovable. A contact beginning on this step (the rig was clear before) is an impact and
- * charges crash damage by the speed component into the surface.
+ * charges crash damage by the speed component into the surface. Folding the trailer into the
+ * jackknife limit is a crash too — the trailer slams into the car — so the bind charges damage
+ * from the speed it arrests, once per fold.
  */
 export function stepWorld(args: { world: World; input: ControlInput; dt: Seconds }): World {
   const { world, input, dt } = args;
   const prevRig = toRig(drivableCar(world));
-  const sweptRig = stepRig({ rig: prevRig, input, dt, catalog: world.catalog });
+  const { rig: sweptRig, jackknifed } = stepRigWithStatus({ rig: prevRig, input, dt, catalog: world.catalog });
   const { rig: resolvedRig, contacted, contactNormal } = resolveRigCollision({
     prevRig,
     sweptRig,
@@ -112,8 +115,12 @@ export function stepWorld(args: { world: World; input: ControlInput; dt: Seconds
       damage += damagePointsForImpact(impactSpeed);
     }
   }
+  // The fold arrests the whole rig, so the speed it was travelling at is the impact speed.
+  if (jackknifed && !world.rigJackknifed) {
+    damage += damagePointsForImpact(prevRig.car.speed as number);
+  }
 
   const steppedCar = fromRig(resolvedRig);
   const cars = world.cars.map((car) => (car.role === "drivable" ? steppedCar : car));
-  return { ...world, cars, damage, rigInContact: contacted };
+  return { ...world, cars, damage, rigInContact: contacted, rigJackknifed: jackknifed };
 }

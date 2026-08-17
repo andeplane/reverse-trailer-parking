@@ -10,11 +10,29 @@ function moveToward(current: number, target: number, maxDelta: number): number {
   return current + Math.sign(diff) * maxDelta;
 }
 
+/** One kinematic step plus what happened to the articulation during it. */
+export interface RigStep {
+  rig: Rig;
+  /** True when the step folded the trailer past its jackknife limit and the rig bound (car
+   * stopped dead). Callers that model damage charge for it — see `world.ts`. */
+  jackknifed: boolean;
+}
+
 /**
  * Pure kinematics-only step: bicycle model for the car + one-trailer articulation.
  * No collision — see `world.ts`/`collision-system.ts` for that.
  */
 export function stepRig(args: { rig: Rig; input: ControlInput; dt: Seconds; catalog: VariantCatalog }): Rig {
+  return stepRigWithStatus(args).rig;
+}
+
+/** As `stepRig`, but also reports whether the rig bound at its jackknife limit this step. */
+export function stepRigWithStatus(args: {
+  rig: Rig;
+  input: ControlInput;
+  dt: Seconds;
+  catalog: VariantCatalog;
+}): RigStep {
   const { rig, dt, catalog } = args;
   const input = clampControlInput(args.input);
   const carVariant = findCarVariant(catalog, rig.car.variantId);
@@ -65,8 +83,11 @@ export function stepRig(args: { rig: Rig; input: ControlInput; dt: Seconds; cata
     // (stop the car) — you have to pull forward to recover.
     if (Math.abs(psi) > carVariant.jackknifeMax) {
       return {
-        car: { ...rig.car, speed: 0 as MPerS, steer },
-        trailer: rig.trailer,
+        rig: {
+          car: { ...rig.car, speed: 0 as MPerS, steer },
+          trailer: rig.trailer,
+        },
+        jackknifed: true,
       };
     }
 
@@ -74,14 +95,17 @@ export function stepRig(args: { rig: Rig; input: ControlInput; dt: Seconds; cata
   }
 
   return {
-    car: {
-      ...rig.car,
-      rearAxle,
-      heading: newHeading,
-      speed: speed as MPerS,
-      steer,
+    rig: {
+      car: {
+        ...rig.car,
+        rearAxle,
+        heading: newHeading,
+        speed: speed as MPerS,
+        steer,
+        trailer,
+      },
       trailer,
     },
-    trailer,
+    jackknifed: false,
   };
 }

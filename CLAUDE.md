@@ -58,6 +58,10 @@ machine** in `src/game/screens/` (`AppShell`) over one shared Phaser surface —
   the speed into the contact normal, only on the clear→contact edge (grinding =
   one hit) and never below the 0.5 m/s dead-zone; a HUD health bar drains, and
   ≥ 100 points shows the lose overlay (`hud/lose-overlay.ts`; win takes precedence).
+  **A jackknife is a crash too**: binding at the articulation limit charges the
+  same 4·v² on the speed the fold arrests, once per fold (free→bound edge, so
+  holding it there is one hit) — `stepRigWithStatus` reports the bind and
+  `World.rigJackknifed` carries the edge. It also costs the damage-free 3rd star.
 - **Editor** (`editor-screen.ts` + pure `editor-model.ts`) — see below.
 - The **app shell owns the bundled/custom split**: `createApp` takes bundled
   levels + a `LevelStorage`; custom levels merge on top by id on every menu

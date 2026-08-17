@@ -260,5 +260,39 @@ describe("stepWorld damage", () => {
     expect(crashed.rigInContact).toBe(true);
     expect(crashed.damage).toBeGreaterThan(0);
   });
+
+  it("charges a jackknife — folding into the limit is a crash, no wall needed", () => {
+    const world = sedanWorld([], { withTrailer: true });
+    const folded = driveUntil(world, { throttle: -1, steer: 1 }, (w) => w.rigJackknifed, 2000);
+    expect(folded.rigInContact).toBe(false); // nothing to hit out here — the fold itself charged
+    expect(folded.damage).toBeGreaterThan(0);
+  });
+
+  it("charges the fold once — grinding against the jackknife limit adds nothing", () => {
+    const world = sedanWorld([], { withTrailer: true });
+    const folded = driveUntil(world, { throttle: -1, steer: 1 }, (w) => w.rigJackknifed, 2000);
+    const held = drive(folded, { throttle: -1, steer: 1 }, 600); // keep folding into the limit
+    expect(held.damage).toBe(folded.damage);
+  });
+
+  it("charges again after pulling forward to unfold and jackknifing a second time", () => {
+    const world = sedanWorld([], { withTrailer: true });
+    const folded = driveUntil(world, { throttle: -1, steer: 1 }, (w) => w.rigJackknifed, 2000);
+    const firstDamage = folded.damage;
+
+    const straightened = drive(folded, { throttle: 1, steer: -1 }, 600); // pull forward to recover
+    expect(straightened.rigJackknifed).toBe(false);
+    expect(straightened.damage).toBe(firstDamage);
+
+    const refolded = driveUntil(straightened, { throttle: -1, steer: 1 }, (w) => w.damage > firstDamage, 2000);
+    expect(refolded.damage).toBeGreaterThan(firstDamage);
+  });
+
+  it("a rig without a trailer never jackknifes", () => {
+    const world = sedanWorld([]);
+    const spun = drive(world, { throttle: -1, steer: 1 }, 600);
+    expect(spun.rigJackknifed).toBe(false);
+    expect(spun.damage).toBe(0);
+  });
 });
 

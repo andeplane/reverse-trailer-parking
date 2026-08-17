@@ -35,6 +35,7 @@ function world(cars: CarState[], overrides: Partial<World> = {}): World {
     catalog,
     damage: 0,
     rigInContact: false,
+    rigJackknifed: false,
     ...overrides,
   };
 }

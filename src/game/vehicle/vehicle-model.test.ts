@@ -5,7 +5,7 @@ import type { ControlInput } from "../../engine/input/input-source";
 import { deriveCarGeometry, deriveTrailerGeometry } from "./vehicle-geometry";
 import { caravanTrailerVariant, createVariantCatalog, sedanCarVariant } from "./variants";
 import type { CarState, Rig, TrailerState } from "./vehicle-types";
-import { stepRig } from "./vehicle-model";
+import { stepRig, stepRigWithStatus } from "./vehicle-model";
 
 const catalog = createVariantCatalog();
 const DT = 1 / 60;
@@ -199,6 +199,17 @@ describe("trailer articulation", () => {
     expect(next.car.heading).toBe(jammed.car.heading);
     expect(next.trailer?.heading).toBe(jammed.trailer?.heading);
     expect(next.car.speed).toBe(0);
+  });
+
+  it("reports the bind via stepRigWithStatus so callers can charge crash damage", () => {
+    const rig: Rig = { car: restCar({ trailer: inLineTrailer() }), trailer: inLineTrailer() };
+    const rolling = stepRigWithStatus({ rig, input: { throttle: -1, steer: 1 }, dt: DT as Seconds, catalog });
+    expect(rolling.jackknifed).toBe(false);
+
+    const jammed = runSteps(rig, { throttle: -1, steer: 1 }, 3000);
+    const bound = stepRigWithStatus({ rig: jammed, input: { throttle: -1, steer: 1 }, dt: DT as Seconds, catalog });
+    expect(bound.jackknifed).toBe(true);
+    expect(bound.rig.car.speed).toBe(0);
   });
 
   it("recovers from the jackknife when driving forward (articulation shrinks)", () => {

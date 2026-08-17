@@ -80,6 +80,9 @@ export interface World {
   /** True while the rig ended the last step touching an obstacle — impacts charge only on the
    * clear→contact edge, so sustained grinding is a single hit. */
   rigInContact: boolean;
+  /** True while the rig ended the last step bound at its jackknife limit — like contact, the fold
+   * charges damage only on the free→bound edge. */
+  rigJackknifed: boolean;
 }
 
 export interface CarSpawn {
