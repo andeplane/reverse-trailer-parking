@@ -52,11 +52,11 @@ describe("deriveTrailerGeometry (caravan)", () => {
   const geometry = deriveTrailerGeometry(caravanTrailerVariant);
 
   it("derives the correct trailer length", () => {
-    expect(geometry.trailerLength).toBeCloseTo(3.1);
+    expect(geometry.trailerLength).toBeCloseTo(2.62);
   });
 
   it("derives the axle centre consistent with the wheel coordinates", () => {
-    expect(geometry.axleCentre).toEqual({ x: -0.9, y: 0 });
+    expect(geometry.axleCentre).toEqual({ x: -0.42, y: 0 });
   });
 });
 
@@ -114,7 +114,7 @@ describe("trailerFootprint / trailerWheelWorldPositions", () => {
     const trailer: TrailerState = { variantId: "caravan", heading: 0 as Radians };
     const footprint = trailerFootprint(trailer, hitch, caravanTrailerVariant);
     const wheels = trailerWheelWorldPositions(trailer, hitch, caravanTrailerVariant);
-    expect(wheels.l.x).toBeCloseTo(footprint.center.x - 0.9);
+    expect(wheels.l.x).toBeCloseTo(footprint.center.x - 0.42);
     expect(wheels.l.y).toBeCloseTo(0.75);
     expect(wheels.r.y).toBeCloseTo(-0.75);
   });

@@ -184,7 +184,9 @@ parking game (glossy cars, textured asphalt lot with bay lines + grass borders).
   (`EntityVisual` union). `src/engine/render/create-phaser-surface.ts` owns the Phaser glue: `42→32`
   pixels/metre, a **y-flip** (world +y up ↔ screen +y down) and rotation mapping `π/2 − θ` for nose-up
   sprites (`−θ` for +x-forward rects), plus the static lot background image and viewport RESIZE handling.
-- **Variant geometry is tuned to match its sprite's aspect ratio** so footprints line up with the art.
+- **Variant geometry is tuned to match its sprite's aspect ratio** so footprints line up with the art,
+  and **wheels sit where the art draws them** — including the trailer axle, which is just aft of the
+  box centre (not at the tail): it sets the hitch-to-axle length and so drives the whole reversing feel.
   Assets (committed by name in `public/assets/`):
   `car-{sedan,suv,hatchback,coupe,wagon,van,pickup,truck,rv}.png` (white, tinted at runtime),
   `trailer-{white,utility}.png`, `tile-{asphalt,grass,hedge,tree}.png`, `steering-wheel.png` (HUD).

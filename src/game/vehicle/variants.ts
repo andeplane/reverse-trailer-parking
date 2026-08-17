@@ -266,9 +266,12 @@ export const rvCarVariant: CarVariant = {
 export const caravanTrailerVariant: TrailerVariant = {
   id: "caravan",
   hitch: { x: 2.2, y: 0 }, // ahead of the box front; the gap is the drawbar
+  // Just aft of the box centre, where a real caravan's single axle sits (and where the sprite
+  // draws its wheel arches). Axle position sets the hitch-to-axle length, so it is the single
+  // biggest handle on how the trailer reverses.
   axleWheels: {
-    l: { x: -0.9, y: 0.75 },
-    r: { x: -0.9, y: -0.75 },
+    l: { x: -0.42, y: 0.75 },
+    r: { x: -0.42, y: -0.75 },
   },
   bodyWidth: 2.0 as Metres,
   bodyLength: 2.6 as Metres,
@@ -280,9 +283,10 @@ export const caravanTrailerVariant: TrailerVariant = {
 export const utilityTrailerVariant: TrailerVariant = {
   id: "utility",
   hitch: { x: 1.6, y: 0 },
+  // Near the middle of the little flat bed — a short hitch-to-axle length, so it reacts fast.
   axleWheels: {
-    l: { x: -0.6, y: 0.75 },
-    r: { x: -0.6, y: -0.75 },
+    l: { x: 0.1, y: 0.75 },
+    r: { x: 0.1, y: -0.75 },
   },
   bodyWidth: 1.9 as Metres,
   bodyLength: 2.1 as Metres,
