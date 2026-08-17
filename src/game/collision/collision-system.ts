@@ -48,8 +48,7 @@ function solidObstacle(obb: Obb): Obstacle {
   return { obb, kind: "solid" };
 }
 
-/** Immovable obstacles: every placed car (and its trailer), collidable props, kerbs, and walls. */
-export function obstacleFootprints(world: World): Obstacle[] {
+function buildObstacles(world: World): Obstacle[] {
   const obstacles: Obstacle[] = [];
   for (const car of placedCars(world)) {
     const carVariant = findCarVariant(world.catalog, car.variantId);
@@ -65,6 +64,30 @@ export function obstacleFootprints(world: World): Obstacle[] {
     ...world.curbs.map((obb): Obstacle => ({ obb, kind: "curb" })),
     ...world.boundary.map(solidObstacle),
   ];
+}
+
+/**
+ * Cache of the obstacle list, keyed by everything it is built from. Nothing here moves during a run
+ * — only the drivable car does, and it is not an obstacle — so this rebuilds essentially never,
+ * while `stepWorld` asks for it 120 times a second on a phone. The key holds identities, so any
+ * edit (a level reload, the editor replacing a car) misses the cache and rebuilds.
+ */
+const obstacleCache = new WeakMap<Obb[], { key: readonly unknown[]; obstacles: Obstacle[] }>();
+
+function sameKey(a: readonly unknown[], b: readonly unknown[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+/** Immovable obstacles: every placed car (and its trailer), collidable props, kerbs, and walls. */
+export function obstacleFootprints(world: World): Obstacle[] {
+  const key: readonly unknown[] = [world.solids, world.curbs, world.catalog, ...placedCars(world)];
+  const cached = obstacleCache.get(world.boundary);
+  if (cached && sameKey(cached.key, key)) return cached.obstacles;
+  const obstacles = buildObstacles(world);
+  obstacleCache.set(world.boundary, { key, obstacles });
+  return obstacles;
 }
 
 function angleLerp(a: number, b: number, t: number): Radians {
@@ -130,17 +153,15 @@ function pushOut(rig: Rig, obstacles: Obstacle[], catalog: VariantCatalog): Rig 
   return current;
 }
 
-/** The rig's deepest contact: the separation normal (unit, out of the obstacle) and the footprint
- * that is touching — its rotation is the rolling axis the slide has to respect. */
+/** The rig's deepest contact: the separation normal (unit, out of the obstacle) and what was hit. */
 function deepestContact(
   rig: Rig,
   obstacles: Obstacle[],
   catalog: VariantCatalog,
-): { normal: Vec2; rollingAxis: Radians; kind: ImpactKind } | null {
+): { normal: Vec2; kind: ImpactKind } | null {
   const footprints = rigFootprints(rig, catalog);
   let deepest: Vec2 | null = null;
   let deepestMag = 0;
-  let rollingAxis = 0 as Radians;
   let kind: ImpactKind = "solid";
   for (const f of footprints) {
     for (const o of obstacles) {
@@ -150,42 +171,40 @@ function deepestContact(
         if (mag > deepestMag) {
           deepestMag = mag;
           deepest = mtv;
-          rollingAxis = f.rotation;
           kind = o.kind;
         }
       }
     }
   }
-  return deepest ? { normal: normalise(deepest), rollingAxis, kind } : null;
+  return deepest ? { normal: normalise(deepest), kind } : null;
 }
 
 /**
  * Slides the rig along the contact surface so a grazing rig glides rather than dead-stops.
  *
  * The leftover motion is first reduced to what the wheels can actually produce — its component
- * along the *contacting body's* rolling axis (its own heading), never the raw step vector — and
- * only then projected onto the surface. Without that reduction the rig would crab: a body rolling
- * into a curb at an angle would be carried bodily along the curb, sideways to its own wheels.
+ * along the **car's** rolling axis, never the raw step vector — and only then projected onto the
+ * surface. Without that reduction the rig would crab: a car rolling into a curb at an angle would
+ * be carried bodily along the curb, sideways to its own wheels. The car's axis is the right one to
+ * gate on even when the trailer is what touches, because the whole rig is translated by the car's
+ * motion — gating on a folded trailer's heading would dead-stop a car rolling straight down a kerb.
  * The surviving motion is scaled by the grip alignment and binds entirely below
  * `SLIDE_GRIP_CUTOFF`. Deterministic; falls back to no slide.
  */
 function slideAlongContact(args: {
   contactPose: Rig;
   sweptRig: Rig;
-  blockedPose: Rig;
+  normal: Vec2;
   obstacles: Obstacle[];
   catalog: VariantCatalog;
 }): Rig {
-  const { contactPose, sweptRig, blockedPose, obstacles, catalog } = args;
+  const { contactPose, sweptRig, normal, obstacles, catalog } = args;
   const remaining = sub(sweptRig.car.rearAxle, contactPose.car.rearAxle);
   if (length(remaining) < 1e-6) return contactPose;
 
-  const contact = deepestContact(blockedPose, obstacles, catalog);
-  if (!contact) return contactPose;
-  const { normal, rollingAxis } = contact;
-
-  // What the wheels can roll: the leftover motion along the contacting body's own axis.
-  const axis: Vec2 = { x: Math.cos(rollingAxis), y: Math.sin(rollingAxis) };
+  // What the wheels can roll: the leftover motion along the car's own axis.
+  const heading = contactPose.car.heading;
+  const axis: Vec2 = { x: Math.cos(heading), y: Math.sin(heading) };
   const rolled = scale(axis, dot(remaining, axis));
   const rolledLen = length(rolled);
   if (rolledLen < 1e-6) return contactPose;
@@ -249,7 +268,10 @@ export function resolveRigCollision(args: {
 
   if (obstacles.length === 0) return clear;
 
-  // If we somehow started overlapping, just push out from the previous pose.
+  // If we somehow started overlapping, just push out from the previous pose. No speed is scrubbed
+  // here on purpose: the frame that *entered* the contact already paid that (this branch only
+  // fires when a pose was overlapping before it moved), and zeroing the speed of a rig that is
+  // stuck inside something would take away the throttle it needs to drive back out.
   if (overlapsAny(rigFootprints(prevRig, catalog), obstacles)) {
     const contact = deepestContact(prevRig, obstacles, catalog);
     return {
@@ -284,7 +306,9 @@ export function resolveRigCollision(args: {
   const contactPose = lerpRig(prevRig, sweptRig, lo, catalog);
   const blockedPose = lerpRig(prevRig, sweptRig, hi, catalog); // barely overlapping → clean normal
   const contact = deepestContact(blockedPose, obstacles, catalog);
-  const slid = slideAlongContact({ contactPose, sweptRig, blockedPose, obstacles, catalog });
+  const slid = contact
+    ? slideAlongContact({ contactPose, sweptRig, normal: contact.normal, obstacles, catalog })
+    : contactPose;
   const resolved = pushOut(slid, obstacles, catalog);
   return {
     rig: bleedSpeed({ prevRig, sweptRig, resolved }),

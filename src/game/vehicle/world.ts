@@ -123,7 +123,7 @@ export function stepWorld(args: { world: World; input: ControlInput; dt: Seconds
   }
   // The fold arrests the whole rig, so the speed it was travelling at is the impact speed.
   if (jackknifed && !world.rigJackknifed) {
-    damage += damagePointsForImpact({ speed: prevRig.car.speed as number, kind: "solid" });
+    damage += damagePointsForImpact({ speed: prevRig.car.speed as number, kind: "jackknife" });
   }
 
   const steppedCar = fromRig(resolvedRig);

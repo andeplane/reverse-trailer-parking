@@ -89,6 +89,26 @@ describe("obstacleFootprints", () => {
     expect(obstacleFootprints(world)).toHaveLength(4);
   });
 
+  it("reuses the obstacle list while nothing static has changed, and rebuilds when it does", () => {
+    const boundary = [wallObb(0, 20, 1, 20)];
+    const world = {
+      cars: [createCar("drivable", 0), createCar("placed", 10)],
+      boundary,
+      solids: [], curbs: [], grid: TILE_GRID, exit: null, bounds: { width: 100, height: 100 },
+      catalog,
+      damage: 0,
+      rigInContact: false,
+      rigJackknifed: false,
+    };
+    const first = obstacleFootprints(world);
+    // Stepping the world replaces the drivable car but nothing else; obstacles must not be rebuilt.
+    const stepped = { ...world, cars: [createCar("drivable", 3), world.cars[1]!] };
+    expect(obstacleFootprints(stepped)).toBe(first);
+    // Replacing a placed car is a real change.
+    const edited = { ...world, cars: [world.cars[0]!, createCar("placed", 14)] };
+    expect(obstacleFootprints(edited)).not.toBe(first);
+  });
+
   it("is empty when there are no placed cars or walls", () => {
     const world = { cars: [createCar("drivable", 0)], boundary: [], solids: [], curbs: [], grid: TILE_GRID, exit: null, bounds: { width: 100, height: 100 }, catalog, damage: 0, rigInContact: false, rigJackknifed: false };
     expect(obstacleFootprints(world)).toHaveLength(0);
@@ -230,6 +250,43 @@ describe("resolveRigCollision", () => {
     const obstacles = [curb(3.4, 0, 0.5, 6), wall(6, 0, 0.5, 6)];
     const result = resolveRigCollision({ prevRig: rigAt(0), sweptRig: rigAt(4), obstacles, catalog });
     expect(result.contactKind).toBe("curb"); // the kerb is what the car reaches first
+  });
+
+  it("keeps rolling along a kerb the trailer is scraping, however folded the trailer is", () => {
+    // The rig is translated by the CAR's motion, so a folded trailer must not veto the car's own
+    // alignment — reversing a caravan down a kerb-lined aisle is the whole game. Gated on the
+    // *contacting body* instead, a trailer folded 40° into the kerb dead-stopped the rig outright.
+    const kerb = [curb(6, 0, 0.5, 12)]; // a vertical strip; the car rolls almost parallel to it
+    const heading = Math.PI / 2 - 0.02; // 1.1° off parallel
+    const folded = (x: number, y: number, fold: number): Rig => {
+      const base = createInitialRig({
+        variantId: "sedan",
+        trailerVariantId: "caravan",
+        position: { x, y },
+        heading: heading as Radians,
+      });
+      return { ...base, trailer: { ...base.trailer!, heading: (heading + fold) as Radians } };
+    };
+    /** The x where this fold puts the trailer just shy of the kerb — the interesting start pose. */
+    const justClearX = (fold: number): number => {
+      let clear = 0;
+      let blocked = 8;
+      for (let i = 0; i < 30; i++) {
+        const mid = (clear + blocked) / 2;
+        const pose = folded(mid, -8, fold);
+        if (resolveRigCollision({ prevRig: pose, sweptRig: pose, obstacles: kerb, catalog }).contacted) blocked = mid;
+        else clear = mid;
+      }
+      return clear;
+    };
+
+    for (const fold of [0, 0.35, 0.7, 0.9]) {
+      const x = justClearX(fold);
+      const prev = folded(x, -8, fold);
+      const swept = folded(x + Math.cos(heading) * 3, -8 + Math.sin(heading) * 3, fold);
+      const result = resolveRigCollision({ prevRig: prev, sweptRig: swept, obstacles: kerb, catalog });
+      expect(result.rig.car.rearAxle.y + 8).toBeGreaterThan(2.5); // of a 3 m roll
+    }
   });
 
   it("scrubs off the speed a blocked step never got to use", () => {

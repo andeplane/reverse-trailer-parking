@@ -44,9 +44,12 @@ const HALF_PI = Math.PI / 2;
  * here — the player is told apart by its red paint, not by its body type. */
 const BAY_VARIANTS = bayCarVariants.map((v) => v.id);
 /** Loose cars stand on open asphalt, so the big stuff (vans, pickups, trucks, motorhomes) fits
- * here too — placement is overlap-checked, so an oversize pick that does not fit is simply
- * rejected and the spot stays empty. */
+ * here too — but only where there is actually room for it, see `looseVariantsFor`. */
 const LOOSE_VARIANTS = [...BAY_VARIANTS, ...oversizeCarVariants.map((v) => v.id)];
+
+/** Metres of clear run an oversize vehicle needs before it is worth attempting (the longest is
+ * 7.4 m, plus a little slack to park it in). */
+const OVERSIZE_RUN_METRES = 9;
 const BAY_OCCUPANCY = 0.6;
 const PINCH_MIN_SEPARATION = 8;
 const PINCH_END_EXCLUSION = 10;
@@ -414,6 +417,24 @@ function range(from: number, to: number): number[] {
   return out;
 }
 
+/**
+ * Metres of unbroken plain asphalt through this cell along the given axis. A truck dropped on a
+ * single free cell is nearly always rejected, so measuring first is what actually gets the big
+ * vehicles into a lot instead of silently never placing them.
+ */
+function freeRunMetres(state: DecorState, col: number, row: number, alongCols: boolean): number {
+  let cells = 1;
+  for (const step of [1, -1]) {
+    for (let i = 1; ; i++) {
+      const c = alongCols ? col + step * i : col;
+      const r = alongCols ? row : row + step * i;
+      if (!inBounds(state.grid, c, r) || !isPlainAsphalt(state.grid, c, r)) break;
+      cells++;
+    }
+  }
+  return cells * state.grid.tileSize;
+}
+
 function decorateLooseCars(args: {
   state: DecorState;
   corridor: Corridor;
@@ -441,6 +462,10 @@ function decorateLooseCars(args: {
     const row = rngInt({ rng, min: 2, max: state.grid.rows - 3 });
     if (!isPlainAsphalt(state.grid, col, row)) continue;
     const heading = rngPick(rng, [0, HALF_PI, Math.PI, -HALF_PI]);
+    const alongCols = heading === 0 || Math.abs(heading) === Math.PI;
+    // Only offer the oversize variants where the vehicle would actually fit.
+    const pool =
+      freeRunMetres(state, col, row, alongCols) >= OVERSIZE_RUN_METRES ? LOOSE_VARIANTS : BAY_VARIANTS;
     const tows = rng.next() < 0.3;
     if (
       tryPlaceParkedCar({
@@ -449,7 +474,7 @@ function decorateLooseCars(args: {
         catalog,
         centre: cellCenter(state.grid, col, row),
         heading,
-        variantId: rngPick(rng, LOOSE_VARIANTS),
+        variantId: rngPick(rng, pool),
         colour: pickLotCarColour(() => rng.next()),
         ...(tows ? { trailerVariantId: rngPick(rng, ["utility", "caravan"]) } : {}),
         extraObstacles: blockers,

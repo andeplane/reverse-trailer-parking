@@ -1,5 +1,6 @@
 import type { Radians } from "../../engine/math/angles";
 import type { Obb } from "../../engine/math/obb";
+import { defaultCarColour } from "../vehicle/car-colours";
 import type { CarSpawn, VariantCatalog, World } from "../vehicle/vehicle-types";
 import { createWorld } from "../vehicle/world";
 import type { ExitLine, Level, LevelCar } from "./level-types";
@@ -10,7 +11,7 @@ const WALL_THICKNESS = 0.5;
 const EXIT_GAP_MARGIN = 0.4;
 const ON_EDGE_TOLERANCE = 1.0;
 
-function carSpawn(car: LevelCar, role: "drivable" | "placed"): CarSpawn {
+function carSpawn(car: LevelCar, role: "drivable" | "placed", index = 0): CarSpawn {
   const spawn: CarSpawn = {
     variantId: car.variantId,
     role,
@@ -18,7 +19,10 @@ function carSpawn(car: LevelCar, role: "drivable" | "placed"): CarSpawn {
     heading: car.heading as Radians,
   };
   if (car.trailerVariantId !== undefined) spawn.trailerVariantId = car.trailerVariantId;
-  if (car.colour !== undefined) spawn.colour = car.colour;
+  // Unpainted parked cars walk the palette rather than all coming out the same silver, so levels
+  // authored before cars had colour keep their variety. The player's rig is always red.
+  if (role === "placed") spawn.colour = car.colour ?? defaultCarColour(index);
+  else if (car.colour !== undefined) spawn.colour = car.colour;
   return spawn;
 }
 
@@ -103,7 +107,7 @@ export function curbFootprints(grid: TileGrid): Obb[] {
 export function levelToWorld(level: Level, catalog: VariantCatalog): World {
   const cars: CarSpawn[] = [
     carSpawn(level.drivable, "drivable"),
-    ...level.placedCars.map((c) => carSpawn(c, "placed")),
+    ...level.placedCars.map((c, i) => carSpawn(c, "placed", i)),
   ];
   const bounds = { width: gridWidth(level.grid), height: gridHeight(level.grid) };
   return createWorld({

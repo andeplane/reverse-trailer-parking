@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { PLAYER_CAR_COLOUR } from "../vehicle/car-colours";
 import { obbMtv } from "../../engine/math/obb";
 import { createVariantCatalog, allCarVariants, allTrailerVariants } from "../vehicle/variants";
 import { drivableCar, placedCars, toRig } from "../vehicle/vehicle-types";
@@ -55,6 +56,19 @@ describe("levelToWorld", () => {
     const horizontal = world.curbs.find((s) => s.rotation === 0);
     expect(horizontal?.halfL).toBeCloseTo(5 + CURB_THICKNESS / 2); // two merged 5m edges + end caps
     expect(horizontal?.halfW).toBeCloseTo(CURB_THICKNESS / 2);
+  });
+
+  it("paints unpainted parked cars across the palette (old levels keep their variety)", () => {
+    const parked = [
+      { variantId: "suv", position: { x: 6, y: 0 }, heading: 0 },
+      { variantId: "coupe", position: { x: 12, y: 0 }, heading: 0 },
+      { variantId: "wagon", position: { x: 18, y: 0 }, heading: 0, colour: 0x2f6fb5 },
+    ];
+    const world = levelToWorld(baseLevel({ placedCars: parked }), catalog);
+    const placed = world.cars.filter((c) => c.role === "placed");
+    expect(placed[0]?.colour).not.toBe(placed[1]?.colour); // not one uniform fleet
+    expect(placed[2]?.colour).toBe(0x2f6fb5); // an explicit paint always wins
+    expect(world.cars.find((c) => c.role === "drivable")?.colour).toBe(PLAYER_CAR_COLOUR);
   });
 
   it("starts with the rig clear of all obstacles", () => {

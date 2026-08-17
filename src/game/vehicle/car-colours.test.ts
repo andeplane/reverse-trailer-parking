@@ -3,6 +3,7 @@ import {
   DEFAULT_CAR_COLOUR,
   LOT_CAR_COLOURS,
   PLAYER_CAR_COLOUR,
+  defaultCarColour,
   isLotCarColour,
   pickLotCarColour,
 } from "./car-colours";
@@ -44,5 +45,13 @@ describe("car colours", () => {
 
   it("has a default paint that is itself a legal lot colour", () => {
     expect(isLotCarColour(DEFAULT_CAR_COLOUR)).toBe(true);
+  });
+
+  it("walks the palette for unpainted cars, so an old level is not a one-colour fleet", () => {
+    const first = Array.from({ length: LOT_CAR_COLOURS.length }, (_, i) => defaultCarColour(i));
+    expect(new Set(first).size).toBe(LOT_CAR_COLOURS.length); // every car a different paint
+    expect(first.every(isLotCarColour)).toBe(true); // ...and never the player's red
+    expect(defaultCarColour(LOT_CAR_COLOURS.length)).toBe(first[0]); // wraps around
+    expect(defaultCarColour(0)).toBe(defaultCarColour(0)); // deterministic per index
   });
 });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CURB_DAMAGE_SCALE,
+  JACKKNIFE_DAMAGE_SCALE,
   CURB_IMPACT_SPEED_DEADZONE,
   DAMAGE_PER_SPEED_SQUARED,
   IMPACT_SPEED_DEADZONE,
@@ -13,6 +14,7 @@ import {
 /** Hitting a solid — a car, a wall, a hedge. */
 const hit = (speed: number): number => damagePointsForImpact({ speed, kind: "solid" });
 const curbHit = (speed: number): number => damagePointsForImpact({ speed, kind: "curb" });
+const foldHit = (speed: number): number => damagePointsForImpact({ speed, kind: "jackknife" });
 
 describe("damagePointsForImpact", () => {
   it("charges nothing for a parking nudge below the dead-zone", () => {
@@ -40,6 +42,13 @@ describe("damagePointsForImpact", () => {
   it("charges a fraction of a real crash for a kerb hit above its dead-zone", () => {
     expect(curbHit(4)).toBeCloseTo(hit(4) * CURB_DAMAGE_SCALE);
     expect(curbHit(4)).toBeLessThan(hit(2)); // slamming a kerb still beats bumping a car
+  });
+
+  it("charges a jackknife less than a head-on crash, and never the whole health bar at once", () => {
+    expect(foldHit(4)).toBeCloseTo(hit(4) * JACKKNIFE_DAMAGE_SCALE);
+    expect(foldHit(4)).toBeLessThan(MAX_DAMAGE / 2); // one fold must not end an otherwise good run
+    expect(foldHit(1.5)).toBeGreaterThan(0); // ...but a fold is still a crash
+    expect(foldHit(0.4)).toBe(0); // a slow fold uses the normal parking dead-zone
   });
 });
 

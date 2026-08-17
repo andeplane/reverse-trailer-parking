@@ -30,6 +30,15 @@ export const LOT_CAR_COLOURS: readonly number[] = [
   0xd98cae, // pink
 ];
 
+/**
+ * Paint for the nth parked car of a level that does not name one — levels authored before cars
+ * carried colour, where each variant used to bring its own coloured sprite. Walking the palette
+ * keeps those lots as varied as they were, with no save-format migration.
+ */
+export function defaultCarColour(index: number): number {
+  return LOT_CAR_COLOURS[Math.abs(index) % LOT_CAR_COLOURS.length] ?? DEFAULT_CAR_COLOUR;
+}
+
 /** True for a colour a *parked* car is allowed to wear (i.e. anything but the player's red). */
 export function isLotCarColour(colour: number): boolean {
   return LOT_CAR_COLOURS.includes(colour);

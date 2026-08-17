@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { isLotCarColour, PLAYER_CAR_COLOUR } from "../vehicle/car-colours";
+import { isLotCarColour, LOT_CAR_COLOURS, PLAYER_CAR_COLOUR } from "../vehicle/car-colours";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Entity, Renderer } from "../../engine/render/renderer";
 import type { Vec2 } from "../../engine/math/vec2";
@@ -39,7 +39,7 @@ function pointer(type: string, clientX = 100, clientY = 100): Event {
 let controlsRoot: HTMLElement | undefined;
 afterEach(() => controlsRoot?.remove());
 
-function mount(worldPoint: Vec2 = { x: 5, y: 4 }, initial?: Level) {
+function mount(worldPoint: Vec2 = { x: 5, y: 4 }, initial?: Level, random?: () => number) {
   controlsRoot = document.createElement("div");
   document.body.appendChild(controlsRoot);
   let tested: Level | undefined;
@@ -54,6 +54,7 @@ function mount(worldPoint: Vec2 = { x: 5, y: 4 }, initial?: Level) {
     onExitToMenu: () => (menu += 1),
     onTest: (l) => (tested = l),
     onSave: (l) => (saved = l),
+    ...(random ? { random } : {}),
   });
   return { screen, controlsRoot, renderer, getTested: () => tested, getSaved: () => saved, getMenu: () => menu };
 }
@@ -177,28 +178,43 @@ describe("createEditorScreen", () => {
   });
 
   it("🎨 repaints every parked car, and undo puts the old paint back", () => {
-    const { controlsRoot, getSaved } = mount({ x: 6.3, y: 3.4 });
+    // A stepping source: each draw lands on a different palette entry, so the re-roll is visible.
+    let draw = 0;
+    const random = (): number => {
+      draw += 1;
+      return (draw % LOT_CAR_COLOURS.length) / LOT_CAR_COLOURS.length;
+    };
+    const { controlsRoot, getSaved } = mount({ x: 6.3, y: 3.4 }, undefined, random);
     (controlsRoot.querySelector('.editor-car-chip[data-variant="suv"]') as HTMLElement).click();
     const cap = capture(controlsRoot);
     cap.dispatchEvent(pointer("pointerdown"));
     cap.dispatchEvent(pointer("pointerup"));
     save(controlsRoot);
     const before = getSaved()!.placedCars[0]!.colour;
+    expect(isLotCarColour(before!)).toBe(true);
 
-    // Re-roll until the paint actually changes — a re-roll may legitimately land on the same one.
-    const paint = controlsRoot.querySelector(".editor-paint") as HTMLElement;
-    let after = before;
-    for (let i = 0; i < 40 && after === before; i++) {
-      paint.click();
-      save(controlsRoot);
-      after = getSaved()!.placedCars[0]!.colour;
-    }
+    (controlsRoot.querySelector(".editor-paint") as HTMLElement).click();
+    save(controlsRoot);
+    const after = getSaved()!.placedCars[0]!.colour;
     expect(after).not.toBe(before);
     expect(isLotCarColour(after!)).toBe(true);
 
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true }));
     save(controlsRoot);
-    expect(getSaved()!.placedCars[0]!.colour).not.toBe(after);
+    expect(getSaved()!.placedCars[0]!.colour).toBe(before);
+  });
+
+  it("shows the ghost in the paint the car will actually be dropped in", () => {
+    const { screen, controlsRoot, renderer } = mount({ x: 6.3, y: 3.4 }, undefined, () => 0.5);
+    (controlsRoot.querySelector('.editor-car-chip[data-variant="suv"]') as HTMLElement).click();
+    const cap = capture(controlsRoot);
+    cap.dispatchEvent(pointer("pointermove"));
+    screen.tick();
+    const ghost = renderer.last.find((e) => e.id === "editor:preview:car");
+    expect(ghost?.visual).toMatchObject({ kind: "sprite" });
+    const tint = ghost?.visual.kind === "sprite" ? ghost.visual.tint : undefined;
+    expect(tint).toBeDefined();
+    expect(isLotCarColour(tint!)).toBe(true);
   });
 
   it("refuses to place a car on top of another car", () => {

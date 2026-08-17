@@ -63,8 +63,8 @@ machine** in `src/game/screens/` (`AppShell`) over one shared Phaser surface —
   deepest contact, so **kerbs** — which ring every grass island, clipped constantly
   while manoeuvring — are free below a 2 m/s dead-zone and cost 0.2× above it,
   while cars/walls/hedges charge in full.
-  **A jackknife is a crash too**: binding at the articulation limit charges the
-  same 4·v² on the speed the fold arrests, once per fold (free→bound edge, so
+  **A jackknife is a crash too**: binding at the articulation limit charges
+  0.5× the 4·v² on the speed the fold arrests, once per fold (free→bound edge, so
   holding it there is one hit) — `stepRigWithStatus` reports the bind and
   `World.rigJackknifed` carries the edge. It also costs the damage-free 3rd star.
 - **Editor** (`editor-screen.ts` + pure `editor-model.ts`) — see below.
@@ -160,7 +160,9 @@ parking game (glossy cars, textured asphalt lot with bay lines + grass borders).
   they survive it). A car's paint is data: `LevelCar.colour` / `CarState.colour` (0xRRGGBB), palette
   in `game/vehicle/car-colours.ts`. **Red is the player's** (`PLAYER_CAR_COLOUR`): it is absent from
   `LOT_CAR_COLOURS`, `validateLevel` rejects a parked car wearing it, and the drivable rig always
-  gets it — so the car you steer is the only red thing on the lot. The editor paints each newly
+  gets it — so the car you steer is the only red thing on the lot. A parked car with no colour
+  (levels authored before this) walks the palette by index (`defaultCarColour`) rather than coming
+  out one uniform silver. The editor paints each newly
   placed car a random lot colour and its **🎨 topbar button re-rolls every parked car**.
 - **Nine body types** (`variants.ts`): sedan/suv/hatchback/coupe/wagon (`bayCarVariants` — these fit
   a 2.5 m × 5 m bay) plus van/pickup/truck/rv (`oversizeCarVariants` — too long for a bay, so the
@@ -197,8 +199,9 @@ parking game (glossy cars, textured asphalt lot with bay lines + grass borders).
 - Collision is our own OBB/SAT (`src/game/collision/collision-system.ts`): path-sampled
   bisect-to-contact + deepest-MTV push-out + **sliding**, deterministic, tunnelling-proof.
   **The slide obeys the wheels, not the wall**: leftover motion is first cut down to its component
-  along the *contacting body's own heading* (car or trailer — whichever OBB is deepest in), and only
-  then projected onto the surface, so a body can never be carried sideways along what it hit.
+  along the **car's** heading (the whole rig is translated by the car's motion, so gating on a
+  folded trailer's heading would dead-stop a car rolling straight down a kerb), and only then
+  projected onto the surface, so the rig can never be carried sideways along what it hit.
   `SLIDE_GRIP_CUTOFF` (0.8) binds anything steeper than a ~37°-off-parallel scrape, and contact
   **scrubs the speed** to the fraction of the step that actually happened (`bleedSpeed`) — without
   that, a rig held against a wall keeps full throttle speed and shoots off the moment it can slide.
