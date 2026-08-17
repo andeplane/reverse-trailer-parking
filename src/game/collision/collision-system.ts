@@ -1,4 +1,5 @@
 import { normaliseAngle, type Radians } from "../../engine/math/angles";
+import type { MPerS } from "../../engine/math/units";
 import { add, dot, length, normalise, scale, sub, type Vec2 } from "../../engine/math/vec2";
 import { obbMtv, type Obb } from "../../engine/math/obb";
 import { carFootprint, hitchWorld, trailerFootprint } from "../vehicle/vehicle-geometry";
@@ -17,12 +18,12 @@ const SLIDE_ITERATIONS = 8;
 /** Path samples along the taken step; makes contact detection tunnelling-proof for coarse steps. */
 const PATH_SAMPLES = 32;
 /**
- * Grip alignment (cos of the angle between the attempted motion and the contact surface) below
- * which the rig binds instead of sliding. Wheels can only roll along the body axis, so a rig
- * pressing steeply into an obstacle must not crab sideways along it; only motion already mostly
- * parallel to the surface may carry through as a slide.
+ * Grip alignment (|cos| of the angle between the contacting body's rolling axis and the contact
+ * surface) below which the rig binds instead of sliding. Wheels only roll along the body axis, so
+ * a body pressed into an obstacle cannot be carried sideways along it: at 0.8 only a scrape within
+ * ~37° of parallel glides at all, and even then only its surviving along-surface component does.
  */
-const SLIDE_GRIP_CUTOFF = 0.4;
+const SLIDE_GRIP_CUTOFF = 0.8;
 
 /** Oriented footprints of a rig: the car OBB plus its trailer OBB (if towed). */
 export function rigFootprints(rig: Rig, catalog: VariantCatalog): Obb[] {
@@ -113,11 +114,17 @@ function pushOut(rig: Rig, obstacles: Obb[], catalog: VariantCatalog): Rig {
   return current;
 }
 
-/** Deepest separation normal (unit) of a rig against obstacles, or null if clear. */
-function contactNormal(rig: Rig, obstacles: Obb[], catalog: VariantCatalog): Vec2 | null {
+/** The rig's deepest contact: the separation normal (unit, out of the obstacle) and the footprint
+ * that is touching — its rotation is the rolling axis the slide has to respect. */
+function deepestContact(
+  rig: Rig,
+  obstacles: Obb[],
+  catalog: VariantCatalog,
+): { normal: Vec2; rollingAxis: Radians } | null {
   const footprints = rigFootprints(rig, catalog);
   let deepest: Vec2 | null = null;
   let deepestMag = 0;
+  let rollingAxis = 0 as Radians;
   for (const f of footprints) {
     for (const o of obstacles) {
       const mtv = obbMtv(f, o);
@@ -126,19 +133,28 @@ function contactNormal(rig: Rig, obstacles: Obb[], catalog: VariantCatalog): Vec
         if (mag > deepestMag) {
           deepestMag = mag;
           deepest = mtv;
+          rollingAxis = f.rotation;
         }
       }
     }
   }
-  return deepest ? normalise(deepest) : null;
+  return deepest ? { normal: normalise(deepest), rollingAxis } : null;
+}
+
+/** Deepest separation normal (unit) of a rig against obstacles, or null if clear. */
+function contactNormal(rig: Rig, obstacles: Obb[], catalog: VariantCatalog): Vec2 | null {
+  return deepestContact(rig, obstacles, catalog)?.normal ?? null;
 }
 
 /**
- * Slides the rig along the contact tangent: the leftover motion into the surface is projected onto
- * the tangent so a grazing rig glides rather than dead-stops. The slide is scaled by the grip
- * alignment (how parallel the attempted motion is to the surface) and binds entirely below
- * `SLIDE_GRIP_CUTOFF` — no-side-slip wheels cannot crab a steeply pressed rig sideways.
- * Deterministic; falls back to no slide.
+ * Slides the rig along the contact surface so a grazing rig glides rather than dead-stops.
+ *
+ * The leftover motion is first reduced to what the wheels can actually produce — its component
+ * along the *contacting body's* rolling axis (its own heading), never the raw step vector — and
+ * only then projected onto the surface. Without that reduction the rig would crab: a body rolling
+ * into a curb at an angle would be carried bodily along the curb, sideways to its own wheels.
+ * The surviving motion is scaled by the grip alignment and binds entirely below
+ * `SLIDE_GRIP_CUTOFF`. Deterministic; falls back to no slide.
  */
 function slideAlongContact(args: {
   contactPose: Rig;
@@ -149,14 +165,20 @@ function slideAlongContact(args: {
 }): Rig {
   const { contactPose, sweptRig, blockedPose, obstacles, catalog } = args;
   const remaining = sub(sweptRig.car.rearAxle, contactPose.car.rearAxle);
-  const remainingLen = length(remaining);
-  if (remainingLen < 1e-6) return contactPose;
+  if (length(remaining) < 1e-6) return contactPose;
 
-  const normal = contactNormal(blockedPose, obstacles, catalog);
-  if (!normal) return contactPose;
+  const contact = deepestContact(blockedPose, obstacles, catalog);
+  if (!contact) return contactPose;
+  const { normal, rollingAxis } = contact;
 
-  const projected = sub(remaining, scale(normal, dot(remaining, normal)));
-  const grip = length(projected) / remainingLen;
+  // What the wheels can roll: the leftover motion along the contacting body's own axis.
+  const axis: Vec2 = { x: Math.cos(rollingAxis), y: Math.sin(rollingAxis) };
+  const rolled = scale(axis, dot(remaining, axis));
+  const rolledLen = length(rolled);
+  if (rolledLen < 1e-6) return contactPose;
+
+  const projected = sub(rolled, scale(normal, dot(rolled, normal)));
+  const grip = length(projected) / rolledLen; // 1 = rolling parallel to the surface, 0 = head-on
   const slideScale = (grip - SLIDE_GRIP_CUTOFF) / (1 - SLIDE_GRIP_CUTOFF);
   if (slideScale <= 0 || length(projected) < 1e-6) return contactPose;
   const tangent = scale(projected, Math.min(1, slideScale));
@@ -177,10 +199,28 @@ function slideAlongContact(args: {
 }
 
 /**
+ * Hitting something scrubs off speed: the car keeps only the fraction of the step it actually
+ * travelled. Without this a rig held against a wall keeps the full throttle speed it never got to
+ * use, and the moment the surface lets it slide it shoots along at that speed.
+ */
+function bleedSpeed(args: { prevRig: Rig; sweptRig: Rig; resolved: Rig }): Rig {
+  const { prevRig, sweptRig, resolved } = args;
+  const attempted = length(sub(sweptRig.car.rearAxle, prevRig.car.rearAxle));
+  if (attempted < 1e-9) return resolved;
+  const achieved = length(sub(resolved.car.rearAxle, prevRig.car.rearAxle));
+  const retained = Math.min(1, achieved / attempted);
+  return {
+    car: { ...resolved.car, speed: ((resolved.car.speed as number) * retained) as MPerS },
+    trailer: resolved.trailer,
+  };
+}
+
+/**
  * Resolves the drivable rig against immovable obstacles: block-at-contact by bisecting the taken
  * sub-step (tunnelling-proof because `prevRig` is known clear), then MTV push-out of any residue.
  * Deterministic; placed obstacles are never moved. On contact, `contactNormal` is the deepest
- * separation normal (unit, pointing out of the obstacle) — the impact direction for damage.
+ * separation normal (unit, pointing out of the obstacle) — the impact direction for damage — and
+ * the car's speed is scrubbed to the fraction of the step that survived.
  */
 export function resolveRigCollision(args: {
   prevRig: Rig;
@@ -228,5 +268,6 @@ export function resolveRigCollision(args: {
   const blockedPose = lerpRig(prevRig, sweptRig, hi, catalog); // barely overlapping → clean normal
   const normal = contactNormal(blockedPose, obstacles, catalog);
   const slid = slideAlongContact({ contactPose, sweptRig, blockedPose, obstacles, catalog });
-  return { rig: pushOut(slid, obstacles, catalog), contacted: true, contactNormal: normal };
+  const resolved = pushOut(slid, obstacles, catalog);
+  return { rig: bleedSpeed({ prevRig, sweptRig, resolved }), contacted: true, contactNormal: normal };
 }

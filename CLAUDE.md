@@ -169,7 +169,13 @@ parking game (glossy cars, textured asphalt lot with bay lines + grass borders).
   skill (GPT Image 1.5, transparent, "top-down, straight overhead, no perspective/tilt"), then trim to
   opaque bounds.
 - Collision is our own OBB/SAT (`src/game/collision/collision-system.ts`): path-sampled
-  bisect-to-contact + deepest-MTV push-out + tangent **sliding**, deterministic, tunnelling-proof.
+  bisect-to-contact + deepest-MTV push-out + **sliding**, deterministic, tunnelling-proof.
+  **The slide obeys the wheels, not the wall**: leftover motion is first cut down to its component
+  along the *contacting body's own heading* (car or trailer — whichever OBB is deepest in), and only
+  then projected onto the surface, so a body can never be carried sideways along what it hit.
+  `SLIDE_GRIP_CUTOFF` (0.8) binds anything steeper than a ~37°-off-parallel scrape, and contact
+  **scrubs the speed** to the fraction of the step that actually happened (`bleedSpeed`) — without
+  that, a rig held against a wall keeps full throttle speed and shoots off the moment it can slide.
 
 ## What This Repo Is
 

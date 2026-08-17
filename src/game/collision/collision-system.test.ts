@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Radians } from "../../engine/math/angles";
+import type { MPerS } from "../../engine/math/units";
+import type { Vec2 } from "../../engine/math/vec2";
 import { obbMtv, type Obb } from "../../engine/math/obb";
 import { createVariantCatalog } from "../vehicle/variants";
 import { filledGrid } from "../level/tile-types";
@@ -25,6 +27,20 @@ function rigAt(x: number, heading = 0, withTrailer = true): Rig {
 
 function anyOverlap(footprints: Obb[], obstacles: Obb[]): boolean {
   return footprints.some((f) => obstacles.some((o) => obbMtv(f, o) !== null));
+}
+
+/**
+ * A rig at `from` plus the pose it reaches by *rolling* `distance` along its own heading — the
+ * only motion the wheels can produce, and so the only kind the resolver has to make sense of.
+ */
+function roll(args: { from: Vec2; heading: number; distance: number }): { prev: Rig; swept: Rig } {
+  const { from, heading, distance } = args;
+  const at = (p: Vec2): Rig =>
+    createInitialRig({ variantId: "sedan", position: p, heading: heading as Radians });
+  return {
+    prev: at(from),
+    swept: at({ x: from.x + Math.cos(heading) * distance, y: from.y + Math.sin(heading) * distance }),
+  };
 }
 
 describe("rigFootprints", () => {
@@ -163,25 +179,35 @@ describe("resolveRigCollision", () => {
   });
 
   it("slides along a wall on a genuinely shallow (grazing) approach instead of dead-stopping", () => {
-    // Motion mostly parallel to the wall face: the tangential (y) component must survive.
-    const prev = createInitialRig({ variantId: "sedan", position: { x: 1.5, y: 0 }, heading: 0 as Radians });
-    const swept = createInitialRig({ variantId: "sedan", position: { x: 3, y: 4 }, heading: 0 as Radians });
+    // Rolling 15° off the wall face — a scrape, so the along-surface part of the roll survives.
+    const { prev, swept } = roll({ from: { x: 3.5, y: -6 }, heading: Math.PI / 2 - 0.26, distance: 6 });
     const result = resolveRigCollision({ prevRig: prev, sweptRig: swept, obstacles: frontWall, catalog });
     expect(result.contacted).toBe(true);
     expect(anyOverlap(rigFootprints(result.rig, catalog), frontWall)).toBe(false);
-    // Blocked in x (front bumper at the wall) but slid substantially in y toward the target.
-    expect(result.rig.car.rearAxle.x).toBeLessThan(3);
-    expect(result.rig.car.rearAxle.y).toBeGreaterThan(2);
+    // Blocked in x by the wall, but carried well along it in y.
+    expect(result.rig.car.rearAxle.x).toBeLessThan(swept.car.rearAxle.x);
+    expect(result.rig.car.rearAxle.y).toBeGreaterThan(-3);
   });
 
-  it("slides only partially at a mid-angle (45°) approach", () => {
-    const prev = rigAt(0, 0, false);
-    const swept = createInitialRig({ variantId: "sedan", position: { x: 4, y: 4 }, heading: 0 as Radians });
+  it("binds at a mid-angle (45°) approach — wheels cannot carry the body along the wall", () => {
+    const { prev, swept } = roll({ from: { x: 0, y: -4 }, heading: Math.PI / 4, distance: 8 });
     const result = resolveRigCollision({ prevRig: prev, sweptRig: swept, obstacles: frontWall, catalog });
     expect(result.contacted).toBe(true);
-    // Some slide survives, but clearly less than the full tangential projection (y = 4).
-    expect(result.rig.car.rearAxle.y).toBeGreaterThan(2);
-    expect(result.rig.car.rearAxle.y).toBeLessThan(3.5);
+    expect(anyOverlap(rigFootprints(result.rig, catalog), frontWall)).toBe(false);
+    // It stops where it met the wall — no crabbing on along it (its own contact-pose y, ±ε).
+    const blockedY = result.rig.car.rearAxle.y;
+    const blockedX = result.rig.car.rearAxle.x;
+    expect(blockedY + 4).toBeCloseTo(blockedX, 1); // still on its own 45° line: y+4 === x
+  });
+
+  it("scrubs off the speed a blocked step never got to use", () => {
+    const prev = { ...rigAt(0), car: { ...rigAt(0).car, speed: 5 as MPerS } };
+    const swept = { ...rigAt(4), car: { ...rigAt(4).car, speed: 5 as MPerS } };
+    const result = resolveRigCollision({ prevRig: prev, sweptRig: swept, obstacles: frontWall, catalog });
+    expect(result.contacted).toBe(true);
+    // Only part of the 4 m step happened, so only that part of the speed survives.
+    expect(result.rig.car.speed).toBeLessThan(5);
+    expect(result.rig.car.speed).toBeGreaterThanOrEqual(0);
   });
 
   it("does not slide sideways for a head-on perpendicular approach", () => {
