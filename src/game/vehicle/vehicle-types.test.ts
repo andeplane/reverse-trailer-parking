@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { DEFAULT_CAR_COLOUR } from "./car-colours";
 import type { Radians } from "../../engine/math/angles";
 import type { MPerS } from "../../engine/math/units";
 import { createVariantCatalog } from "./variants";
@@ -22,6 +23,7 @@ function makeCar(role: "placed" | "drivable"): CarState {
     heading: 0 as Radians,
     speed: 0 as MPerS,
     steer: 0 as Radians,
+  colour: DEFAULT_CAR_COLOUR,
     trailer: null,
   };
 }

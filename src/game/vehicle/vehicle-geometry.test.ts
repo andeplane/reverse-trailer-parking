@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { DEFAULT_CAR_COLOUR } from "./car-colours";
 import type { Radians } from "../../engine/math/angles";
 import type { MPerS } from "../../engine/math/units";
 import { caravanTrailerVariant, sedanCarVariant } from "./variants";
@@ -21,6 +22,7 @@ function carAt(x: number, y: number, heading: number): CarState {
     heading: heading as Radians,
     speed: 0 as MPerS,
     steer: 0 as Radians,
+  colour: DEFAULT_CAR_COLOUR,
     trailer: null,
   };
 }
@@ -88,7 +90,7 @@ describe("hitchWorld / carFootprint", () => {
   it("centres the footprint on the body and matches heading", () => {
     const car = carAt(5, -3, Math.PI / 4);
     const footprint = carFootprint(car, sedanCarVariant);
-    expect(footprint.halfW).toBeCloseTo(0.81); // collisionWidth 1.62 / 2 (excludes mirrors)
+    expect(footprint.halfW).toBeCloseTo(0.85); // collisionWidth 1.7 / 2 (excludes mirrors)
     expect(footprint.halfL).toBeCloseTo(2.25);
     expect(footprint.rotation).toBeCloseTo(Math.PI / 4);
   });

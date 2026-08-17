@@ -12,6 +12,9 @@ export interface LevelCar {
   position: Vec2; // rear-axle reference, metres
   heading: number; // radians
   trailerVariantId?: string;
+  /** Paint, 0xRRGGBB (the art is white and tinted). Omitted → the default lot paint; the player's
+   * rig is always red whatever this says. See `vehicle/car-colours.ts`. */
+  colour?: number;
 }
 
 /** Exit gate: a line segment a–b with a unit `outward` normal pointing to the winning side. */

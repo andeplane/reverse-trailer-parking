@@ -38,6 +38,7 @@ import { BAY_LINE_WIDTH, tileGroundTexture } from "../view/tile-decor";
 import { fitZoom, PIXELS_PER_METRE } from "../view/camera-fit";
 import { worldToLayers } from "../view/world-view";
 import { worldToDebugEntities } from "../view/debug-view";
+import { pickLotCarColour } from "../vehicle/car-colours";
 import { allCarVariants } from "../vehicle/variants";
 import { findCarVariant, type VariantCatalog } from "../vehicle/vehicle-types";
 import type { Screen } from "./screen";
@@ -377,6 +378,8 @@ export function createEditorScreen(args: {
   topButton("－", "editor-zoom", () => (camera.zoom /= 1.2));
   const fitBtn = topButton("⛶", "editor-zoom editor-fit", () => fitCamera());
   fitBtn.title = "Fit the whole map in view";
+  const paintBtn = topButton("🎨", "editor-paint", () => randomiseCarColours());
+  paintBtn.title = "Randomise the colour of every parked car";
   topButton("Test ▸", "editor-test", () => onTest(level, savedJson));
 
   // Dirty tracking: leaving the editor must NEVER silently lose work. The baseline is the
@@ -671,7 +674,22 @@ export function createEditorScreen(args: {
     const candidate = carBrushCandidate(p);
     if (carOverlaps(level, candidate, catalog)) return; // no car on top of another
     pushUndo();
-    level = { ...level, placedCars: [...level.placedCars, candidate] };
+    // A fresh paint per car, so a hand-built lot looks like a lot and not a fleet.
+    level = { ...level, placedCars: [...level.placedCars, { ...candidate, colour: pickLotCarColour(Math.random) }] };
+  }
+
+  /** Re-rolls the paint of every parked car — the quick way to make a lot look lived-in. */
+  function randomiseCarColours(): void {
+    if (level.placedCars.length === 0) {
+      toast("No parked cars to paint yet", true);
+      return;
+    }
+    pushUndo();
+    level = {
+      ...level,
+      placedCars: level.placedCars.map((car) => ({ ...car, colour: pickLotCarColour(Math.random) })),
+    };
+    toast(`Repainted ${level.placedCars.length} car${level.placedCars.length === 1 ? "" : "s"} 🎨`);
   }
   function moveSelection(delta: Vec2): void {
     const sel = selection;

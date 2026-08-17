@@ -12,6 +12,7 @@ import { decorate, openFraction } from "./decorate";
 import { difficultyParams, type Difficulty } from "./difficulty";
 import { recordDriveIn, type RecordedPath } from "./drive-in";
 import { TEST_CATALOG, makeSkeleton, type TestSkeleton } from "./test-fixtures";
+import { DEFAULT_CAR_COLOUR } from "../../vehicle/car-colours";
 
 interface Decorated {
   skeleton: TestSkeleton;
@@ -65,6 +66,7 @@ function placedCarObbs(car: LevelCar) {
     heading: car.heading as Radians,
     speed: 0 as MPerS,
     steer: 0 as Radians,
+    colour: DEFAULT_CAR_COLOUR,
     trailer: car.trailerVariantId ? { variantId: car.trailerVariantId, heading: car.heading as Radians } : null,
   };
   const obbs = [carFootprint(state, variant)];

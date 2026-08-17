@@ -176,7 +176,8 @@ export function worldToLayers(world: World, catalog: VariantCatalog): WorldLayer
       position: footprint.center,
       rotation: car.heading,
       size: { width: variant.bodyWidth, length: variant.bodyLength },
-      visual: { kind: "sprite", texture: variant.texture },
+      // The art is white; the car's paint is a tint (the player's rig is the only red one).
+      visual: { kind: "sprite", texture: variant.texture, tint: car.colour },
     });
 
     const cw = wheelWorldPositions(car, variant);

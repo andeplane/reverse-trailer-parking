@@ -57,6 +57,8 @@ export interface CarState {
   speed: MPerS;
   steer: Radians;
   trailer: TrailerState | null;
+  /** Paint, 0xRRGGBB — the white art is tinted with it (see `car-colours.ts`). */
+  colour: number;
 }
 
 /** A car and its (optional) trailer as the coupled unit stepped by the kinematic model. */
@@ -93,6 +95,8 @@ export interface CarSpawn {
   position: Vec2;
   heading: Radians;
   trailerVariantId?: string;
+  /** Paint, 0xRRGGBB; omitted → the default lot paint (the drivable rig is always the player red). */
+  colour?: number;
 }
 
 export function findCarVariant(catalog: VariantCatalog, variantId: string): CarVariant {

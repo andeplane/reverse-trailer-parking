@@ -155,6 +155,16 @@ reproduces the scenario (`level/debug-state.ts`).
 The world is drawn as **realistic AI-generated top-down sprites**, matching a polished casual
 parking game (glossy cars, textured asphalt lot with bay lines + grass borders). Details:
 
+- **Colour is not part of a variant.** Every vehicle sprite is authored **white** and tinted at
+  render time (`EntityVisual.tint` → Phaser `setTint`, a multiply — glass/tyres are near-black so
+  they survive it). A car's paint is data: `LevelCar.colour` / `CarState.colour` (0xRRGGBB), palette
+  in `game/vehicle/car-colours.ts`. **Red is the player's** (`PLAYER_CAR_COLOUR`): it is absent from
+  `LOT_CAR_COLOURS`, `validateLevel` rejects a parked car wearing it, and the drivable rig always
+  gets it — so the car you steer is the only red thing on the lot. The editor paints each newly
+  placed car a random lot colour and its **🎨 topbar button re-rolls every parked car**.
+- **Nine body types** (`variants.ts`): sedan/suv/hatchback/coupe/wagon (`bayCarVariants` — these fit
+  a 2.5 m × 5 m bay) plus van/pickup/truck/rv (`oversizeCarVariants` — too long for a bay, so the
+  generator only puts them on open asphalt, where an oversize pick that does not fit is rejected).
 - **One sprite per vehicle body** (car + trailer), scaled to its **derived footprint**
   (`bodyWidth`×`bodyLength`). Sprites are authored **nose-up** and trimmed to their true bounds so
   footprint scaling is proportional (no stretching), with **clean edges** (no baked outline) and
@@ -175,10 +185,11 @@ parking game (glossy cars, textured asphalt lot with bay lines + grass borders).
   pixels/metre, a **y-flip** (world +y up ↔ screen +y down) and rotation mapping `π/2 − θ` for nose-up
   sprites (`−θ` for +x-forward rects), plus the static lot background image and viewport RESIZE handling.
 - **Variant geometry is tuned to match its sprite's aspect ratio** so footprints line up with the art.
-  Assets (committed by name in `public/assets/`): `car-{red,blue,green,orange,purple}.png`,
+  Assets (committed by name in `public/assets/`):
+  `car-{sedan,suv,hatchback,coupe,wagon,van,pickup,truck,rv}.png` (white, tinted at runtime),
   `trailer-{white,utility}.png`, `tile-{asphalt,grass,hedge,tree}.png`, `steering-wheel.png` (HUD).
-  The player is the red sedan+caravan; placed cars use the other colours/variants. Bay lines and
-  curbs are vector-drawn (no sprites). Regenerate via the `ai-image-generator`
+  The player is the red-tinted sedan+caravan; parked cars pick a body type and a lot colour
+  independently. Bay lines and curbs are vector-drawn (no sprites). Regenerate via the `ai-image-generator`
   skill (GPT Image 1.5, transparent, "top-down, straight overhead, no perspective/tilt"), then trim to
   opaque bounds.
 - Collision is our own OBB/SAT (`src/game/collision/collision-system.ts`): path-sampled

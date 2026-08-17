@@ -6,6 +6,7 @@ import { carFootprint, rearAxleForBodyCentre } from "../vehicle/vehicle-geometry
 import { findCarVariant, type CarState, type VariantCatalog } from "../vehicle/vehicle-types";
 import type { ExitLine, Level, LevelCar } from "./level-types";
 import { filledGrid, gridHeight, gridWidth, resizeGrid } from "./tile-types";
+import { DEFAULT_CAR_COLOUR } from "../vehicle/car-colours";
 
 /** A blank level to start authoring from: an all-asphalt grid, a drivable rig, exit on the right. */
 export function emptyLevel(id: string): Level {
@@ -86,6 +87,7 @@ export function levelCarObb(car: LevelCar, catalog: VariantCatalog): Obb {
     speed: 0 as MPerS,
     steer: 0 as Radians,
     trailer: null,
+    colour: car.colour ?? DEFAULT_CAR_COLOUR, // geometry only — the paint never moves the box
   };
   const footprint = carFootprint(state, variant);
   return {

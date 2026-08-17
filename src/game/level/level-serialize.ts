@@ -28,6 +28,7 @@ function parseCar(v: unknown, where: string): LevelCar {
     heading: num(v.heading, `${where}.heading`),
   };
   if (v.trailerVariantId !== undefined) car.trailerVariantId = str(v.trailerVariantId, `${where}.trailerVariantId`);
+  if (v.colour !== undefined) car.colour = num(v.colour, `${where}.colour`);
   return car;
 }
 

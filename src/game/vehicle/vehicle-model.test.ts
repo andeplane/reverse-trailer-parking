@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { PLAYER_CAR_COLOUR } from "./car-colours";
 import type { Radians } from "../../engine/math/angles";
 import type { MPerS, Seconds } from "../../engine/math/units";
 import type { ControlInput } from "../../engine/input/input-source";
@@ -19,6 +20,7 @@ function restCar(overrides: Partial<CarState> = {}): CarState {
     speed: 0 as MPerS,
     steer: 0 as Radians,
     trailer: null,
+    colour: PLAYER_CAR_COLOUR,
     ...overrides,
   };
 }

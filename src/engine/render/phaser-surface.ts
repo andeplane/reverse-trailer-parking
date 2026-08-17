@@ -4,6 +4,14 @@ export interface Footprint {
   length: number;
 }
 
+/**
+ * Spec for a drawn sprite: its footprint plus an optional multiply tint (0xRRGGBB). The vehicle art
+ * is authored white, so the tint is what gives a car its colour.
+ */
+export interface SpriteSpec extends Footprint {
+  tint?: number;
+}
+
 /** Spec for a drawn rounded rectangle; dimensions/stroke in world units (metres), colours 0xRRGGBB. */
 export interface RectSpec extends Footprint {
   fillColor: number;
@@ -15,8 +23,8 @@ export interface RectSpec extends Footprint {
 
 /** The only surface phaser-renderer.ts touches; the real impl wraps a Phaser Scene. */
 export interface PhaserSurface {
-  /** Create a textured sprite scaled to the given footprint, keyed by id. */
-  addSprite(id: string, texture: string, footprint: Footprint): void;
+  /** Create a textured sprite scaled to the given footprint (optionally tinted), keyed by id. */
+  addSprite(id: string, texture: string, spec: SpriteSpec): void;
   /** Create a rounded-rect shape with the given fixed footprint/style, keyed by id. */
   addRect(id: string, spec: RectSpec): void;
   /** `depth` is the draw order (higher = on top); it keeps z-order stable when items are recreated. */

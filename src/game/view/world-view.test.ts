@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { PLAYER_CAR_COLOUR } from "../vehicle/car-colours";
 import type { Radians } from "../../engine/math/angles";
 import type { MPerS } from "../../engine/math/units";
 import { allCarVariants, allTrailerVariants, createVariantCatalog, sedanCarVariant } from "../vehicle/variants";
@@ -20,6 +21,7 @@ function carAt(overrides: Partial<CarState> = {}): CarState {
     speed: 0 as MPerS,
     steer: 0 as Radians,
     trailer: null,
+    colour: PLAYER_CAR_COLOUR,
     ...overrides,
   };
 }
@@ -45,9 +47,18 @@ describe("worldToEntities", () => {
   it("emits a car body sprite + 4 wheels for a car with no trailer", () => {
     const entities = worldToEntities(world([carAt()]), catalog);
     const body = entities.find((e) => e.id === "car:0")!;
-    expect(body.visual).toEqual({ kind: "sprite", texture: sedanCarVariant.texture });
+    expect(body.visual).toEqual({ kind: "sprite", texture: sedanCarVariant.texture, tint: PLAYER_CAR_COLOUR });
     expect(entities.filter((e) => /^car:0:wheel:/.test(e.id))).toHaveLength(4);
     expect(entities.every((e) => !e.id.includes("trailer"))).toBe(true);
+  });
+
+  it("tints each car body with its own paint — the player's rig is the red one", () => {
+    const parked: CarState = { ...carAt(), role: "placed", colour: 0x2f6fb5, rearAxle: { x: 8, y: 0 } };
+    const entities = worldToEntities(world([carAt(), parked]), catalog);
+    const player = entities.find((e) => e.id === "car:0")!.visual;
+    const other = entities.find((e) => e.id === "car:1")!.visual;
+    expect(player).toMatchObject({ tint: PLAYER_CAR_COLOUR });
+    expect(other).toMatchObject({ tint: 0x2f6fb5 });
   });
 
   it("renders the tile grid as sprites beneath the vehicles", () => {

@@ -4,6 +4,7 @@ import { dot, type Vec2 } from "../../engine/math/vec2";
 import type { Obb } from "../../engine/math/obb";
 import type { ControlInput } from "../../engine/input/input-source";
 import { obstacleFootprints, resolveRigCollision } from "../collision/collision-system";
+import { DEFAULT_CAR_COLOUR, PLAYER_CAR_COLOUR } from "./car-colours";
 import { damagePointsForImpact } from "./damage";
 import { stepRigWithStatus } from "./vehicle-model";
 import {
@@ -30,6 +31,8 @@ function carStateFromSpawn(spawn: CarSpawn): CarState {
     speed: 0 as MPerS,
     steer: 0 as Radians,
     trailer: spawn.trailerVariantId ? { variantId: spawn.trailerVariantId, heading: spawn.heading } : null,
+    // The car you steer is the only red one on the lot; parked cars fall back to the default paint.
+    colour: spawn.colour ?? (spawn.role === "drivable" ? PLAYER_CAR_COLOUR : DEFAULT_CAR_COLOUR),
   };
 }
 
@@ -80,6 +83,7 @@ export function createInitialRig(args: {
     speed: 0 as MPerS,
     steer: 0 as Radians,
     trailer: args.trailerVariantId ? { variantId: args.trailerVariantId, heading } : null,
+    colour: PLAYER_CAR_COLOUR,
   };
   return toRig(car);
 }

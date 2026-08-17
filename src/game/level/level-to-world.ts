@@ -18,6 +18,7 @@ function carSpawn(car: LevelCar, role: "drivable" | "placed"): CarSpawn {
     heading: car.heading as Radians,
   };
   if (car.trailerVariantId !== undefined) spawn.trailerVariantId = car.trailerVariantId;
+  if (car.colour !== undefined) spawn.colour = car.colour;
   return spawn;
 }
 

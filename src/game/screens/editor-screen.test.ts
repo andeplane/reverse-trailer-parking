@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { isLotCarColour, PLAYER_CAR_COLOUR } from "../vehicle/car-colours";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Entity, Renderer } from "../../engine/render/renderer";
 import type { Vec2 } from "../../engine/math/vec2";
@@ -160,6 +161,44 @@ describe("createEditorScreen", () => {
     const obb = levelCarObb(getSaved()!.placedCars[0]!, catalog);
     expect(obb.center.x).toBeCloseTo(6.3);
     expect(obb.center.y).toBeCloseTo(3.4);
+  });
+
+  it("paints each placed car a lot colour — never the player's red", () => {
+    const { controlsRoot, getSaved } = mount({ x: 6.3, y: 3.4 });
+    (controlsRoot.querySelector('.editor-car-chip[data-variant="suv"]') as HTMLElement).click();
+    const cap = capture(controlsRoot);
+    cap.dispatchEvent(pointer("pointerdown"));
+    cap.dispatchEvent(pointer("pointerup"));
+    save(controlsRoot);
+    const colour = getSaved()?.placedCars[0]?.colour;
+    expect(colour).toBeDefined();
+    expect(isLotCarColour(colour!)).toBe(true);
+    expect(colour).not.toBe(PLAYER_CAR_COLOUR);
+  });
+
+  it("🎨 repaints every parked car, and undo puts the old paint back", () => {
+    const { controlsRoot, getSaved } = mount({ x: 6.3, y: 3.4 });
+    (controlsRoot.querySelector('.editor-car-chip[data-variant="suv"]') as HTMLElement).click();
+    const cap = capture(controlsRoot);
+    cap.dispatchEvent(pointer("pointerdown"));
+    cap.dispatchEvent(pointer("pointerup"));
+    save(controlsRoot);
+    const before = getSaved()!.placedCars[0]!.colour;
+
+    // Re-roll until the paint actually changes — a re-roll may legitimately land on the same one.
+    const paint = controlsRoot.querySelector(".editor-paint") as HTMLElement;
+    let after = before;
+    for (let i = 0; i < 40 && after === before; i++) {
+      paint.click();
+      save(controlsRoot);
+      after = getSaved()!.placedCars[0]!.colour;
+    }
+    expect(after).not.toBe(before);
+    expect(isLotCarColour(after!)).toBe(true);
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true }));
+    save(controlsRoot);
+    expect(getSaved()!.placedCars[0]!.colour).not.toBe(after);
   });
 
   it("refuses to place a car on top of another car", () => {
