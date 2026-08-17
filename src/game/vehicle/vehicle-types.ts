@@ -57,6 +57,8 @@ export interface CarState {
   speed: MPerS;
   steer: Radians;
   trailer: TrailerState | null;
+  /** Paint, 0xRRGGBB — the white art is tinted with it (see `car-colours.ts`). */
+  colour: number;
 }
 
 /** A car and its (optional) trailer as the coupled unit stepped by the kinematic model. */
@@ -68,8 +70,10 @@ export interface Rig {
 export interface World {
   cars: CarState[];
   boundary: Obb[];
-  /** Collidable footprints of solid tiles (curbs, hedges, trees). */
+  /** Collidable footprints of solid props (hedges, trees) — hitting one is a full crash. */
   solids: Obb[];
+  /** Kerb strips: collidable like a solid, but only a low lip, so impacts with them cost little. */
+  curbs: Obb[];
   /** The tile map (for rendering). */
   grid: TileGrid;
   exit: ExitLine | null;
@@ -80,6 +84,9 @@ export interface World {
   /** True while the rig ended the last step touching an obstacle — impacts charge only on the
    * clear→contact edge, so sustained grinding is a single hit. */
   rigInContact: boolean;
+  /** True while the rig ended the last step bound at its jackknife limit — like contact, the fold
+   * charges damage only on the free→bound edge. */
+  rigJackknifed: boolean;
 }
 
 export interface CarSpawn {
@@ -88,6 +95,8 @@ export interface CarSpawn {
   position: Vec2;
   heading: Radians;
   trailerVariantId?: string;
+  /** Paint, 0xRRGGBB; omitted → the default lot paint (the drivable rig is always the player red). */
+  colour?: number;
 }
 
 export function findCarVariant(catalog: VariantCatalog, variantId: string): CarVariant {

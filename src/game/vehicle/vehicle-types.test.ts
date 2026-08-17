@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { DEFAULT_CAR_COLOUR } from "./car-colours";
 import type { Radians } from "../../engine/math/angles";
 import type { MPerS } from "../../engine/math/units";
 import { createVariantCatalog } from "./variants";
@@ -22,6 +23,7 @@ function makeCar(role: "placed" | "drivable"): CarState {
     heading: 0 as Radians,
     speed: 0 as MPerS,
     steer: 0 as Radians,
+  colour: DEFAULT_CAR_COLOUR,
     trailer: null,
   };
 }
@@ -52,17 +54,17 @@ describe("world helpers", () => {
   const catalog = createVariantCatalog();
 
   it("finds the drivable car", () => {
-    const world: World = { cars: [makeCar("placed"), makeCar("drivable")], boundary: [], solids: [], grid: TILE_GRID, exit: null, bounds: { width: 100, height: 100 }, catalog, damage: 0, rigInContact: false };
+    const world: World = { cars: [makeCar("placed"), makeCar("drivable")], boundary: [], solids: [], curbs: [], grid: TILE_GRID, exit: null, bounds: { width: 100, height: 100 }, catalog, damage: 0, rigInContact: false, rigJackknifed: false };
     expect(drivableCar(world).role).toBe("drivable");
   });
 
   it("throws when no car is drivable", () => {
-    const world: World = { cars: [makeCar("placed")], boundary: [], solids: [], grid: TILE_GRID, exit: null, bounds: { width: 100, height: 100 }, catalog, damage: 0, rigInContact: false };
+    const world: World = { cars: [makeCar("placed")], boundary: [], solids: [], curbs: [], grid: TILE_GRID, exit: null, bounds: { width: 100, height: 100 }, catalog, damage: 0, rigInContact: false, rigJackknifed: false };
     expect(() => drivableCar(world)).toThrow(RangeError);
   });
 
   it("returns only placed cars", () => {
-    const world: World = { cars: [makeCar("placed"), makeCar("drivable")], boundary: [], solids: [], grid: TILE_GRID, exit: null, bounds: { width: 100, height: 100 }, catalog, damage: 0, rigInContact: false };
+    const world: World = { cars: [makeCar("placed"), makeCar("drivable")], boundary: [], solids: [], curbs: [], grid: TILE_GRID, exit: null, bounds: { width: 100, height: 100 }, catalog, damage: 0, rigInContact: false, rigJackknifed: false };
     expect(placedCars(world)).toHaveLength(1);
     expect(placedCars(world)[0]?.role).toBe("placed");
   });

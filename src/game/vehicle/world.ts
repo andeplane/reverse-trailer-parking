@@ -4,8 +4,9 @@ import { dot, type Vec2 } from "../../engine/math/vec2";
 import type { Obb } from "../../engine/math/obb";
 import type { ControlInput } from "../../engine/input/input-source";
 import { obstacleFootprints, resolveRigCollision } from "../collision/collision-system";
+import { DEFAULT_CAR_COLOUR, PLAYER_CAR_COLOUR } from "./car-colours";
 import { damagePointsForImpact } from "./damage";
-import { stepRig } from "./vehicle-model";
+import { stepRigWithStatus } from "./vehicle-model";
 import {
   drivableCar,
   fromRig,
@@ -30,6 +31,8 @@ function carStateFromSpawn(spawn: CarSpawn): CarState {
     speed: 0 as MPerS,
     steer: 0 as Radians,
     trailer: spawn.trailerVariantId ? { variantId: spawn.trailerVariantId, heading: spawn.heading } : null,
+    // The car you steer is the only red one on the lot; parked cars fall back to the default paint.
+    colour: spawn.colour ?? (spawn.role === "drivable" ? PLAYER_CAR_COLOUR : DEFAULT_CAR_COLOUR),
   };
 }
 
@@ -38,6 +41,7 @@ export function createWorld(args: {
   boundary: Obb[];
   catalog: VariantCatalog;
   solids?: Obb[];
+  curbs?: Obb[];
   grid?: TileGrid;
   exit?: ExitLine | null;
   bounds?: { width: number; height: number };
@@ -52,12 +56,14 @@ export function createWorld(args: {
     cars,
     boundary: args.boundary,
     solids: args.solids ?? [],
+    curbs: args.curbs ?? [],
     grid,
     exit: args.exit ?? null,
     bounds: args.bounds ?? { width: gridWidth(grid), height: gridHeight(grid) },
     catalog: args.catalog,
     damage: 0,
     rigInContact: false,
+    rigJackknifed: false,
   };
 }
 
@@ -77,6 +83,7 @@ export function createInitialRig(args: {
     speed: 0 as MPerS,
     steer: 0 as Radians,
     trailer: args.trailerVariantId ? { variantId: args.trailerVariantId, heading } : null,
+    colour: PLAYER_CAR_COLOUR,
   };
   return toRig(car);
 }
@@ -85,13 +92,15 @@ export function createInitialRig(args: {
  * Advances only the drivable rig via `stepRig`, then resolves collision against every placed car
  * (and its trailer) and the boundary so the rig can never overlap or tunnel through them. Placed
  * cars are immovable. A contact beginning on this step (the rig was clear before) is an impact and
- * charges crash damage by the speed component into the surface.
+ * charges crash damage by the speed component into the surface. Folding the trailer into the
+ * jackknife limit is a crash too — the trailer slams into the car — so the bind charges damage
+ * from the speed it arrests, once per fold.
  */
 export function stepWorld(args: { world: World; input: ControlInput; dt: Seconds }): World {
   const { world, input, dt } = args;
   const prevRig = toRig(drivableCar(world));
-  const sweptRig = stepRig({ rig: prevRig, input, dt, catalog: world.catalog });
-  const { rig: resolvedRig, contacted, contactNormal } = resolveRigCollision({
+  const { rig: sweptRig, jackknifed } = stepRigWithStatus({ rig: prevRig, input, dt, catalog: world.catalog });
+  const { rig: resolvedRig, contacted, contactNormal, contactKind } = resolveRigCollision({
     prevRig,
     sweptRig,
     obstacles: obstacleFootprints(world),
@@ -109,11 +118,15 @@ export function stepWorld(args: { world: World; input: ControlInput; dt: Seconds
       };
       // Speed component driving into the surface; grazing touches charge little, head-ons fully.
       const impactSpeed = Math.max(0, -dot(motion, contactNormal)) * Math.abs(speed);
-      damage += damagePointsForImpact(impactSpeed);
+      damage += damagePointsForImpact({ speed: impactSpeed, kind: contactKind ?? "solid" });
     }
+  }
+  // The fold arrests the whole rig, so the speed it was travelling at is the impact speed.
+  if (jackknifed && !world.rigJackknifed) {
+    damage += damagePointsForImpact({ speed: prevRig.car.speed as number, kind: "jackknife" });
   }
 
   const steppedCar = fromRig(resolvedRig);
   const cars = world.cars.map((car) => (car.role === "drivable" ? steppedCar : car));
-  return { ...world, cars, damage, rigInContact: contacted };
+  return { ...world, cars, damage, rigInContact: contacted, rigJackknifed: jackknifed };
 }

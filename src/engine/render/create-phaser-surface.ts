@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import type { Footprint, PhaserSurface, RectSpec } from "./phaser-surface";
+import type { PhaserSurface, RectSpec, SpriteSpec } from "./phaser-surface";
 
 /** World units are metres; positions/sizes are scaled to pixels by this factor. */
 const PIXELS_PER_METRE = 32;
@@ -65,11 +65,12 @@ export function createPhaserSurface(args: {
     }
 
     const surface: PhaserSurface = {
-      addSprite(id: string, texture: string, footprint: Footprint): void {
+      addSprite(id: string, texture: string, spec: SpriteSpec): void {
         if (!scene) return;
         const sprite = scene.add.sprite(0, 0, texture);
         // Nose-up art: image width → side extent, image height → nose-tail extent.
-        sprite.setDisplaySize(footprint.width * PIXELS_PER_METRE, footprint.length * PIXELS_PER_METRE);
+        sprite.setDisplaySize(spec.width * PIXELS_PER_METRE, spec.length * PIXELS_PER_METRE);
+        if (spec.tint !== undefined) sprite.setTint(spec.tint);
         placed.set(id, { obj: sprite, rotationOffset: SPRITE_ROTATION_OFFSET });
       },
       addRect(id: string, spec: RectSpec): void {

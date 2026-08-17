@@ -6,7 +6,7 @@ import type { PhaserSurface } from "./phaser-surface";
 import { createPhaserRenderer } from "./phaser-renderer";
 
 type Call =
-  | { op: "sprite"; id: string; texture: string; width: number; length: number }
+  | { op: "sprite"; id: string; texture: string; width: number; length: number; tint?: number }
   | { op: "rect"; id: string; fillColor: number }
   | { op: "transform"; id: string; x: number; y: number; rotation: number }
   | { op: "remove"; id: string }
@@ -15,7 +15,15 @@ type Call =
 function fakeSurface(): { surface: PhaserSurface; calls: Call[] } {
   const calls: Call[] = [];
   const surface: PhaserSurface = {
-    addSprite: (id, texture, fp) => calls.push({ op: "sprite", id, texture, width: fp.width, length: fp.length }),
+    addSprite: (id, texture, spec) =>
+      calls.push({
+        op: "sprite",
+        id,
+        texture,
+        width: spec.width,
+        length: spec.length,
+        ...(spec.tint !== undefined ? { tint: spec.tint } : {}),
+      }),
     addRect: (id, spec) => calls.push({ op: "rect", id, fillColor: spec.fillColor }),
     setTransform: (id, x, y, rotation) => calls.push({ op: "transform", id, x, y, rotation }),
     remove: (id) => calls.push({ op: "remove", id }),
@@ -27,7 +35,7 @@ function fakeSurface(): { surface: PhaserSurface; calls: Call[] } {
   return { surface, calls };
 }
 
-const SPRITE: EntityVisual = { kind: "sprite", texture: "car-red" };
+const SPRITE: EntityVisual = { kind: "sprite", texture: "car-sedan" };
 const RECT: EntityVisual = {
   kind: "rect",
   style: { fillColor: 0x123456, strokeColor: 0, strokeWidth: 0 as Metres, cornerRadius: 0 as Metres },
@@ -48,9 +56,26 @@ describe("createPhaserRenderer", () => {
     const { surface, calls } = fakeSurface();
     createPhaserRenderer({ surface }).sync([entity("a", SPRITE, 1, 2, 0.5)]);
     expect(calls).toEqual([
-      { op: "sprite", id: "a", texture: "car-red", width: 2, length: 4 },
+      { op: "sprite", id: "a", texture: "car-sedan", width: 2, length: 4 },
       { op: "transform", id: "a", x: 1, y: 2, rotation: 0.5 },
     ]);
+  });
+
+  it("passes a sprite's tint through, and repaints it when the tint changes", () => {
+    const { surface, calls } = fakeSurface();
+    const renderer = createPhaserRenderer({ surface });
+    const blue: EntityVisual = { kind: "sprite", texture: "car-sedan", tint: 0x2f6fb5 };
+    const green: EntityVisual = { kind: "sprite", texture: "car-sedan", tint: 0x2f7d5f };
+    renderer.sync([entity("a", blue)]);
+    expect(calls[0]).toEqual({ op: "sprite", id: "a", texture: "car-sedan", width: 2, length: 4, tint: 0x2f6fb5 });
+
+    calls.length = 0;
+    renderer.sync([entity("a", blue)]);
+    expect(calls.some((c) => c.op === "sprite")).toBe(false); // same paint → no rebuild
+
+    renderer.sync([entity("a", green)]);
+    expect(calls).toContainEqual({ op: "remove", id: "a" });
+    expect(calls).toContainEqual({ op: "sprite", id: "a", texture: "car-sedan", width: 2, length: 4, tint: 0x2f7d5f });
   });
 
   it("adds a rect for a rect-visual entity", () => {

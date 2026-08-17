@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { PLAYER_CAR_COLOUR } from "../vehicle/car-colours";
 import { obbMtv } from "../../engine/math/obb";
 import { createVariantCatalog, allCarVariants, allTrailerVariants } from "../vehicle/variants";
 import { drivableCar, placedCars, toRig } from "../vehicle/vehicle-types";
@@ -43,23 +44,38 @@ describe("levelToWorld", () => {
     expect(obstacleFootprints(world).length).toBe(obstacleFootprints(withoutSolids).length + 2);
   });
 
-  it("turns curbed edges into thin collidable strips", () => {
+  it("turns curbed edges into thin collidable strips, kept apart from the solids", () => {
     let grid = filledGrid(8, 6, 5);
     grid = withCurb(grid, { o: "h", col: 2, row: 3 }, true);
     grid = withCurb(grid, { o: "h", col: 3, row: 3 }, true);
     grid = withCurb(grid, { o: "v", col: 2, row: 3 }, true);
     const world = levelToWorld(baseLevel({ grid }), catalog);
-    expect(world.solids).toHaveLength(2); // one merged horizontal run + one vertical
-    const horizontal = world.solids.find((s) => s.rotation === 0);
+    expect(world.curbs).toHaveLength(2); // one merged horizontal run + one vertical
+    // Kerbs are their own obstacle kind — hitting one is a scrape, not a crash.
+    expect(obstacleFootprints(world).filter((o) => o.kind === "curb")).toHaveLength(2);
+    const horizontal = world.curbs.find((s) => s.rotation === 0);
     expect(horizontal?.halfL).toBeCloseTo(5 + CURB_THICKNESS / 2); // two merged 5m edges + end caps
     expect(horizontal?.halfW).toBeCloseTo(CURB_THICKNESS / 2);
+  });
+
+  it("paints unpainted parked cars across the palette (old levels keep their variety)", () => {
+    const parked = [
+      { variantId: "suv", position: { x: 6, y: 0 }, heading: 0 },
+      { variantId: "coupe", position: { x: 12, y: 0 }, heading: 0 },
+      { variantId: "wagon", position: { x: 18, y: 0 }, heading: 0, colour: 0x2f6fb5 },
+    ];
+    const world = levelToWorld(baseLevel({ placedCars: parked }), catalog);
+    const placed = world.cars.filter((c) => c.role === "placed");
+    expect(placed[0]?.colour).not.toBe(placed[1]?.colour); // not one uniform fleet
+    expect(placed[2]?.colour).toBe(0x2f6fb5); // an explicit paint always wins
+    expect(world.cars.find((c) => c.role === "drivable")?.colour).toBe(PLAYER_CAR_COLOUR);
   });
 
   it("starts with the rig clear of all obstacles", () => {
     const world = levelToWorld(baseLevel(), catalog);
     const rig = rigFootprints(toRig(drivableCar(world)), catalog);
     const obstacles = obstacleFootprints(world);
-    expect(rig.some((f) => obstacles.some((o) => obbMtv(f, o) !== null))).toBe(false);
+    expect(rig.some((f) => obstacles.some((o) => obbMtv(f, o.obb) !== null))).toBe(false);
   });
 });
 

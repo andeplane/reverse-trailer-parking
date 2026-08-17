@@ -6,6 +6,9 @@ function fakeControls(state: Partial<TouchControls> & { forward?: boolean; rever
     isForwardHeld: () => state.forward ?? false,
     isReverseHeld: () => state.reverse ?? false,
     steerValue: () => state.steer ?? 0,
+    centreSteer: () => {
+      state.steer = 0;
+    },
   };
   return controls;
 }
@@ -44,6 +47,14 @@ describe("createTouchInput", () => {
   it("clamps an out-of-range steer value", () => {
     const input = createTouchInput({ controls: fakeControls({ steer: 5 }) });
     expect(input.read().steer).toBe(1);
+  });
+
+  it("recentres the slider on reset so a restart starts with straight wheels", () => {
+    const state = { steer: 0.8 };
+    const input = createTouchInput({ controls: fakeControls(state) });
+    expect(input.read().steer).toBe(0.8);
+    input.reset();
+    expect(input.read().steer).toBe(0);
   });
 
   it("has a no-op dispose", () => {

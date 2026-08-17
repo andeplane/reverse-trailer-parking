@@ -10,6 +10,13 @@ export interface ControlInput {
 
 export interface InputSource {
   read(): ControlInput;
+  /**
+   * Drops any *remembered* intent — the sticky steer angle a wheel holds when the player lets go,
+   * a slider left off-centre. Called when the run restarts, so the fresh rig starts with straight
+   * wheels instead of inheriting the last run's lock. Momentary state (a key or pedal currently
+   * held down) is left alone: it describes what the player is doing right now, not history.
+   */
+  reset(): void;
   dispose(): void;
 }
 

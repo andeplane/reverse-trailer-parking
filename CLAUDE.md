@@ -18,7 +18,9 @@ machine** in `src/game/screens/` (`AppShell`) over one shared Phaser surface —
 
 - **Menu** (`menu-screen.ts`) is a **level-pack home screen**: a hero title +
   **total-star chip**, then one **endless pack per difficulty** (Easy/Medium/Hard,
-  accordion — one open at a time, first open by default). A pack level is **just a
+  accordion — one open at a time, first open by default; the **app shell remembers
+  which pack is open** (`openPack`/`onOpenPackChange`) and playing a level opens its
+  pack, so returning to the menu never snaps back to Easy). A pack level is **just a
   deterministic seed** (`level/packs.ts` `packLevelSeed(difficulty, index)` —
   NEVER change the hash, star progress is keyed by its output via
   `starKey` = the `r.<difficulty>.<seed36>` share payload). Tiles show 0–3
@@ -56,6 +58,15 @@ machine** in `src/game/screens/` (`AppShell`) over one shared Phaser surface —
   the speed into the contact normal, only on the clear→contact edge (grinding =
   one hit) and never below the 0.5 m/s dead-zone; a HUD health bar drains, and
   ≥ 100 points shows the lose overlay (`hud/lose-overlay.ts`; win takes precedence).
+  **Not everything you hit is a crash**: `obstacleFootprints` returns typed
+  `Obstacle`s (`{obb, kind}`) and the resolver reports the `contactKind` of the
+  deepest contact, so **kerbs** — which ring every grass island, clipped constantly
+  while manoeuvring — are free below a 2 m/s dead-zone and cost 0.2× above it,
+  while cars/walls/hedges charge in full.
+  **A jackknife is a crash too**: binding at the articulation limit charges
+  0.5× the 4·v² on the speed the fold arrests, once per fold (free→bound edge, so
+  holding it there is one hit) — `stepRigWithStatus` reports the bind and
+  `World.rigJackknifed` carries the edge. It also costs the damage-free 3rd star.
 - **Editor** (`editor-screen.ts` + pure `editor-model.ts`) — see below.
 - The **app shell owns the bundled/custom split**: `createApp` takes bundled
   levels + a `LevelStorage`; custom levels merge on top by id on every menu
@@ -115,7 +126,11 @@ vehicles — `worldToLayers`). Keys: **R** rotates the hovered thing — cars in
 **−30° steps** (clockwise on screen), tiles a quarter turn; **Q** picks up whatever
 is hovered as the active tool (Factorio-style copy), Q again toggles Select/Move;
 **⌫** deletes the selected/hovered placed car; ⌘Z undo, **⇧⌘Z/Ctrl+Y redo**; Esc
-cancel; Space/right-drag pans; wheel zooms. **Touch:** two-pointer **pinch
+cancel; Space/right-drag pans; wheel zooms — every wheel-driven zoom (editor and
+play free-look) goes through `engine/input/wheel-zoom.ts` `wheelZoomFactor`, which
+is **exponential in the pixels scrolled** (deltaMode-aware, per-event capped): a
+fixed step per event makes a Mac trackpad, which fires dozens of tiny events per
+swipe, wildly over-sensitive. **Touch:** two-pointer **pinch
 zoom/pan**; selecting shows a **⟲ ⟳ 🗑 toolbar**. Leaving with unsaved changes
 opens an in-app **Save & exit / Discard / Cancel** dialog (dirty baseline =
 last-persisted state, threaded through Test ▸ round-trips). Save **validates** and
@@ -140,6 +155,18 @@ reproduces the scenario (`level/debug-state.ts`).
 The world is drawn as **realistic AI-generated top-down sprites**, matching a polished casual
 parking game (glossy cars, textured asphalt lot with bay lines + grass borders). Details:
 
+- **Colour is not part of a variant.** Every vehicle sprite is authored **white** and tinted at
+  render time (`EntityVisual.tint` → Phaser `setTint`, a multiply — glass/tyres are near-black so
+  they survive it). A car's paint is data: `LevelCar.colour` / `CarState.colour` (0xRRGGBB), palette
+  in `game/vehicle/car-colours.ts`. **Red is the player's** (`PLAYER_CAR_COLOUR`): it is absent from
+  `LOT_CAR_COLOURS`, `validateLevel` rejects a parked car wearing it, and the drivable rig always
+  gets it — so the car you steer is the only red thing on the lot. A parked car with no colour
+  (levels authored before this) walks the palette by index (`defaultCarColour`) rather than coming
+  out one uniform silver. The editor paints each newly
+  placed car a random lot colour and its **🎨 topbar button re-rolls every parked car**.
+- **Nine body types** (`variants.ts`): sedan/suv/hatchback/coupe/wagon (`bayCarVariants` — these fit
+  a 2.5 m × 5 m bay) plus van/pickup/truck/rv (`oversizeCarVariants` — too long for a bay, so the
+  generator only puts them on open asphalt, where an oversize pick that does not fit is rejected).
 - **One sprite per vehicle body** (car + trailer), scaled to its **derived footprint**
   (`bodyWidth`×`bodyLength`). Sprites are authored **nose-up** and trimmed to their true bounds so
   footprint scaling is proportional (no stretching), with **clean edges** (no baked outline) and
@@ -150,20 +177,34 @@ parking game (glossy cars, textured asphalt lot with bay lines + grass borders).
 - **Collision ≠ sprite width**: the OBB uses a per-variant `collisionWidth` (the body, excluding
   door mirrors) so collision matches the visible car, not the sprite's outer extent.
 - **Steering holds** (no self-centring); at the jackknife limit the car **binds** (stops) rather than
-  sliding the trailer sideways.
+  sliding the trailer sideways. That held angle lives in the **input source**, not the world, so
+  every `InputSource` implements **`reset()`** and `sandbox.reset()` calls it — otherwise a restart
+  hands the fresh rig the last run's lock and the wheels snap straight then turn back. `reset()`
+  drops only *remembered* intent (held wheel angle, touch slider position), never a key/pedal that
+  is currently held down.
 - `src/game/view/world-view.ts` maps `World → Entity[]` where each `Entity` is a `sprite` or a `rect`
   (`EntityVisual` union). `src/engine/render/create-phaser-surface.ts` owns the Phaser glue: `42→32`
   pixels/metre, a **y-flip** (world +y up ↔ screen +y down) and rotation mapping `π/2 − θ` for nose-up
   sprites (`−θ` for +x-forward rects), plus the static lot background image and viewport RESIZE handling.
-- **Variant geometry is tuned to match its sprite's aspect ratio** so footprints line up with the art.
-  Assets (committed by name in `public/assets/`): `car-{red,blue,green,orange,purple}.png`,
+- **Variant geometry is tuned to match its sprite's aspect ratio** so footprints line up with the art,
+  and **wheels sit where the art draws them** — including the trailer axle, which is just aft of the
+  box centre (not at the tail): it sets the hitch-to-axle length and so drives the whole reversing feel.
+  Assets (committed by name in `public/assets/`):
+  `car-{sedan,suv,hatchback,coupe,wagon,van,pickup,truck,rv}.png` (white, tinted at runtime),
   `trailer-{white,utility}.png`, `tile-{asphalt,grass,hedge,tree}.png`, `steering-wheel.png` (HUD).
-  The player is the red sedan+caravan; placed cars use the other colours/variants. Bay lines and
-  curbs are vector-drawn (no sprites). Regenerate via the `ai-image-generator`
+  The player is the red-tinted sedan+caravan; parked cars pick a body type and a lot colour
+  independently. Bay lines and curbs are vector-drawn (no sprites). Regenerate via the `ai-image-generator`
   skill (GPT Image 1.5, transparent, "top-down, straight overhead, no perspective/tilt"), then trim to
   opaque bounds.
 - Collision is our own OBB/SAT (`src/game/collision/collision-system.ts`): path-sampled
-  bisect-to-contact + deepest-MTV push-out + tangent **sliding**, deterministic, tunnelling-proof.
+  bisect-to-contact + deepest-MTV push-out + **sliding**, deterministic, tunnelling-proof.
+  **The slide obeys the wheels, not the wall**: leftover motion is first cut down to its component
+  along the **car's** heading (the whole rig is translated by the car's motion, so gating on a
+  folded trailer's heading would dead-stop a car rolling straight down a kerb), and only then
+  projected onto the surface, so the rig can never be carried sideways along what it hit.
+  `SLIDE_GRIP_CUTOFF` (0.8) binds anything steeper than a ~37°-off-parallel scrape, and contact
+  **scrubs the speed** to the fraction of the step that actually happened (`bleedSpeed`) — without
+  that, a rig held against a wall keeps full throttle speed and shoots off the moment it can slide.
 
 ## What This Repo Is
 

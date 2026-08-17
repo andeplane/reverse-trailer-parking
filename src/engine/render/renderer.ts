@@ -13,7 +13,10 @@ export interface RectStyle {
 }
 
 /** How an entity is drawn: a textured sprite (roof-view art) or a plain rounded rectangle. */
-export type EntityVisual = { kind: "sprite"; texture: string } | { kind: "rect"; style: RectStyle };
+export type EntityVisual =
+  /** `tint` (0xRRGGBB) multiplies the texture — the vehicle art is white so this is its colour. */
+  | { kind: "sprite"; texture: string; tint?: number }
+  | { kind: "rect"; style: RectStyle };
 
 /**
  * A renderable oriented item in world space. `size` is the on-screen footprint in world units

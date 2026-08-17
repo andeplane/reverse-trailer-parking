@@ -59,6 +59,10 @@ export function createKeyboardInput(args: {
       return clampControlInput({ throttle, steer });
     },
 
+    reset(): void {
+      steer = 0; // the held wheel angle is the only thing this source remembers
+    },
+
     dispose(): void {
       target.removeEventListener("keydown", onKeyDown);
       target.removeEventListener("keyup", onKeyUp);

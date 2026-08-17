@@ -22,6 +22,25 @@ describe("serialize/parse round-trip", () => {
     expect(parseLevel(JSON.parse(serializeLevel(level)))).toEqual(level);
   });
 
+  it("round-trips a parked car's paint, and leaves an unpainted car unpainted", () => {
+    const painted: Level = {
+      ...level,
+      placedCars: [
+        { variantId: "suv", position: { x: 3, y: 4 }, heading: 1, colour: 0x2f6fb5 },
+        { variantId: "van", position: { x: 9, y: 4 }, heading: 1 },
+      ],
+    };
+    const parsed = parseLevel(JSON.parse(serializeLevel(painted)));
+    expect(parsed.placedCars[0]?.colour).toBe(0x2f6fb5);
+    expect(parsed.placedCars[1]?.colour).toBeUndefined(); // old saves stay unpainted, not 0
+  });
+
+  it("rejects a colour that is not a number", () => {
+    expect(() =>
+      parseLevel({ ...level, placedCars: [{ variantId: "suv", position: { x: 3, y: 4 }, heading: 1, colour: "red" }] }),
+    ).toThrow(RangeError);
+  });
+
   it("omits an absent trailer/par without adding undefined keys", () => {
     const minimal: Level = { ...level, drivable: { variantId: "sedan", position: { x: 0, y: 0 }, heading: 0 } };
     delete (minimal as { parSeconds?: number }).parSeconds;

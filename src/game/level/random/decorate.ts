@@ -28,6 +28,8 @@ import {
 import { localMargin, type DifficultyParams } from "./difficulty";
 import { corridorIntersectsObb, type Corridor } from "./corridor";
 import type { RecordedPath } from "./drive-in";
+import { DEFAULT_CAR_COLOUR, pickLotCarColour } from "../../vehicle/car-colours";
+import { bayCarVariants, oversizeCarVariants } from "../../vehicle/variants";
 
 /**
  * Decoration: turns the empty skeleton + corridor into a believable parking lot — curbed grass
@@ -38,7 +40,16 @@ import type { RecordedPath } from "./drive-in";
  */
 
 const HALF_PI = Math.PI / 2;
-const PARKED_VARIANTS = ["suv", "hatchback", "coupe", "wagon"];
+/** Cars for painted bays: only what actually fits a 2.5 m × 5 m bay. The sedan shape is fair game
+ * here — the player is told apart by its red paint, not by its body type. */
+const BAY_VARIANTS = bayCarVariants.map((v) => v.id);
+/** Loose cars stand on open asphalt, so the big stuff (vans, pickups, trucks, motorhomes) fits
+ * here too — but only where there is actually room for it, see `looseVariantsFor`. */
+const LOOSE_VARIANTS = [...BAY_VARIANTS, ...oversizeCarVariants.map((v) => v.id)];
+
+/** Metres of clear run an oversize vehicle needs before it is worth attempting (the longest is
+ * 7.4 m, plus a little slack to park it in). */
+const OVERSIZE_RUN_METRES = 9;
 const BAY_OCCUPANCY = 0.6;
 const PINCH_MIN_SEPARATION = 8;
 const PINCH_END_EXCLUSION = 10;
@@ -60,6 +71,7 @@ function placedCarState(car: LevelCar): CarState {
     speed: 0 as MPerS,
     steer: 0 as Radians,
     trailer: car.trailerVariantId ? { variantId: car.trailerVariantId, heading: car.heading as Radians } : null,
+    colour: car.colour ?? DEFAULT_CAR_COLOUR,
   };
 }
 
@@ -115,6 +127,8 @@ function tryPlaceParkedCar(args: {
   heading: number;
   variantId: string;
   trailerVariantId?: string;
+  /** Paint for this car; parked cars never wear the player's red. */
+  colour?: number;
   extraObstacles: Obb[];
 }): boolean {
   const { state, corridor, catalog, centre, heading, variantId, extraObstacles } = args;
@@ -124,6 +138,7 @@ function tryPlaceParkedCar(args: {
     position: rearAxleForBodyCentre({ centre, heading: heading as Radians, variant }),
     heading,
     ...(args.trailerVariantId !== undefined ? { trailerVariantId: args.trailerVariantId } : {}),
+    ...(args.colour !== undefined ? { colour: args.colour } : {}),
   };
   const obbs = carFootprints(car, catalog);
   for (const obb of obbs) {
@@ -221,7 +236,8 @@ function decorateDock(args: {
       catalog,
       centre: bayCentre,
       heading: axis,
-      variantId: rngPick(rng, PARKED_VARIANTS),
+      variantId: rngPick(rng, BAY_VARIANTS),
+      colour: pickLotCarColour(() => rng.next()),
       extraObstacles: [],
     });
   }
@@ -378,7 +394,8 @@ function decorateBayRows(args: {
               catalog,
               centre,
               heading: side.heading,
-              variantId: rngPick(rng, PARKED_VARIANTS),
+              variantId: rngPick(rng, BAY_VARIANTS),
+              colour: pickLotCarColour(() => rng.next()),
               extraObstacles: [],
             });
           }
@@ -398,6 +415,24 @@ function range(from: number, to: number): number[] {
   const out: number[] = [];
   for (let i = from; i <= to; i++) out.push(i);
   return out;
+}
+
+/**
+ * Metres of unbroken plain asphalt through this cell along the given axis. A truck dropped on a
+ * single free cell is nearly always rejected, so measuring first is what actually gets the big
+ * vehicles into a lot instead of silently never placing them.
+ */
+function freeRunMetres(state: DecorState, col: number, row: number, alongCols: boolean): number {
+  let cells = 1;
+  for (const step of [1, -1]) {
+    for (let i = 1; ; i++) {
+      const c = alongCols ? col + step * i : col;
+      const r = alongCols ? row : row + step * i;
+      if (!inBounds(state.grid, c, r) || !isPlainAsphalt(state.grid, c, r)) break;
+      cells++;
+    }
+  }
+  return cells * state.grid.tileSize;
 }
 
 function decorateLooseCars(args: {
@@ -427,6 +462,10 @@ function decorateLooseCars(args: {
     const row = rngInt({ rng, min: 2, max: state.grid.rows - 3 });
     if (!isPlainAsphalt(state.grid, col, row)) continue;
     const heading = rngPick(rng, [0, HALF_PI, Math.PI, -HALF_PI]);
+    const alongCols = heading === 0 || Math.abs(heading) === Math.PI;
+    // Only offer the oversize variants where the vehicle would actually fit.
+    const pool =
+      freeRunMetres(state, col, row, alongCols) >= OVERSIZE_RUN_METRES ? LOOSE_VARIANTS : BAY_VARIANTS;
     const tows = rng.next() < 0.3;
     if (
       tryPlaceParkedCar({
@@ -435,7 +474,8 @@ function decorateLooseCars(args: {
         catalog,
         centre: cellCenter(state.grid, col, row),
         heading,
-        variantId: rngPick(rng, PARKED_VARIANTS),
+        variantId: rngPick(rng, pool),
+        colour: pickLotCarColour(() => rng.next()),
         ...(tows ? { trailerVariantId: rngPick(rng, ["utility", "caravan"]) } : {}),
         extraObstacles: blockers,
       })

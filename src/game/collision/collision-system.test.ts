@@ -1,17 +1,35 @@
 import { describe, expect, it } from "vitest";
 import type { Radians } from "../../engine/math/angles";
+import type { MPerS } from "../../engine/math/units";
+import type { Vec2 } from "../../engine/math/vec2";
 import { obbMtv, type Obb } from "../../engine/math/obb";
 import { createVariantCatalog } from "../vehicle/variants";
 import { filledGrid } from "../level/tile-types";
 import { createInitialRig } from "../vehicle/world";
 import type { Rig } from "../vehicle/vehicle-types";
-import { lerpRig, obstacleFootprints, resolveRigCollision, rigFootprints } from "./collision-system";
+import {
+  lerpRig,
+  obstacleFootprints,
+  resolveRigCollision,
+  rigFootprints,
+  type Obstacle,
+} from "./collision-system";
 
 const catalog = createVariantCatalog();
 const TILE_GRID = filledGrid(4, 4, 5);
 
-function wall(cx: number, cy: number, halfL: number, halfW: number): Obb {
+function wallObb(cx: number, cy: number, halfL: number, halfW: number): Obb {
   return { center: { x: cx, y: cy }, halfL, halfW, rotation: 0 as Radians };
+}
+
+/** A solid obstacle (a wall) — the default thing to crash into. */
+function wall(cx: number, cy: number, halfL: number, halfW: number): Obstacle {
+  return { obb: wallObb(cx, cy, halfL, halfW), kind: "solid" };
+}
+
+/** The same strip, but a low kerb: collidable all the same, far cheaper to clip. */
+function curb(cx: number, cy: number, halfL: number, halfW: number): Obstacle {
+  return { obb: wallObb(cx, cy, halfL, halfW), kind: "curb" };
 }
 
 function rigAt(x: number, heading = 0, withTrailer = true): Rig {
@@ -23,8 +41,22 @@ function rigAt(x: number, heading = 0, withTrailer = true): Rig {
   });
 }
 
-function anyOverlap(footprints: Obb[], obstacles: Obb[]): boolean {
-  return footprints.some((f) => obstacles.some((o) => obbMtv(f, o) !== null));
+function anyOverlap(footprints: Obb[], obstacles: Obstacle[]): boolean {
+  return footprints.some((f) => obstacles.some((o) => obbMtv(f, o.obb) !== null));
+}
+
+/**
+ * A rig at `from` plus the pose it reaches by *rolling* `distance` along its own heading — the
+ * only motion the wheels can produce, and so the only kind the resolver has to make sense of.
+ */
+function roll(args: { from: Vec2; heading: number; distance: number }): { prev: Rig; swept: Rig } {
+  const { from, heading, distance } = args;
+  const at = (p: Vec2): Rig =>
+    createInitialRig({ variantId: "sedan", position: p, heading: heading as Radians });
+  return {
+    prev: at(from),
+    swept: at({ x: from.x + Math.cos(heading) * distance, y: from.y + Math.sin(heading) * distance }),
+  };
 }
 
 describe("rigFootprints", () => {
@@ -39,7 +71,7 @@ describe("rigFootprints", () => {
 
 describe("obstacleFootprints", () => {
   it("collects placed cars, their trailers, and boundary walls", () => {
-    const boundary = [wall(0, 20, 1, 20)];
+    const boundary = [wallObb(0, 20, 1, 20)];
     const world = {
       cars: [
         createCar("drivable", 0),
@@ -47,17 +79,38 @@ describe("obstacleFootprints", () => {
         createCarWithTrailer("placed", -10),
       ],
       boundary,
-      solids: [], grid: TILE_GRID, exit: null, bounds: { width: 100, height: 100 },
+      solids: [], curbs: [], grid: TILE_GRID, exit: null, bounds: { width: 100, height: 100 },
       catalog,
       damage: 0,
       rigInContact: false,
+      rigJackknifed: false,
     };
     // placed car (1) + placed car + trailer (2) + boundary (1) = 4
     expect(obstacleFootprints(world)).toHaveLength(4);
   });
 
+  it("reuses the obstacle list while nothing static has changed, and rebuilds when it does", () => {
+    const boundary = [wallObb(0, 20, 1, 20)];
+    const world = {
+      cars: [createCar("drivable", 0), createCar("placed", 10)],
+      boundary,
+      solids: [], curbs: [], grid: TILE_GRID, exit: null, bounds: { width: 100, height: 100 },
+      catalog,
+      damage: 0,
+      rigInContact: false,
+      rigJackknifed: false,
+    };
+    const first = obstacleFootprints(world);
+    // Stepping the world replaces the drivable car but nothing else; obstacles must not be rebuilt.
+    const stepped = { ...world, cars: [createCar("drivable", 3), world.cars[1]!] };
+    expect(obstacleFootprints(stepped)).toBe(first);
+    // Replacing a placed car is a real change.
+    const edited = { ...world, cars: [world.cars[0]!, createCar("placed", 14)] };
+    expect(obstacleFootprints(edited)).not.toBe(first);
+  });
+
   it("is empty when there are no placed cars or walls", () => {
-    const world = { cars: [createCar("drivable", 0)], boundary: [], solids: [], grid: TILE_GRID, exit: null, bounds: { width: 100, height: 100 }, catalog, damage: 0, rigInContact: false };
+    const world = { cars: [createCar("drivable", 0)], boundary: [], solids: [], curbs: [], grid: TILE_GRID, exit: null, bounds: { width: 100, height: 100 }, catalog, damage: 0, rigInContact: false, rigJackknifed: false };
     expect(obstacleFootprints(world)).toHaveLength(0);
   });
 });
@@ -162,25 +215,88 @@ describe("resolveRigCollision", () => {
   });
 
   it("slides along a wall on a genuinely shallow (grazing) approach instead of dead-stopping", () => {
-    // Motion mostly parallel to the wall face: the tangential (y) component must survive.
-    const prev = createInitialRig({ variantId: "sedan", position: { x: 1.5, y: 0 }, heading: 0 as Radians });
-    const swept = createInitialRig({ variantId: "sedan", position: { x: 3, y: 4 }, heading: 0 as Radians });
+    // Rolling 15° off the wall face — a scrape, so the along-surface part of the roll survives.
+    const { prev, swept } = roll({ from: { x: 3.5, y: -6 }, heading: Math.PI / 2 - 0.26, distance: 6 });
     const result = resolveRigCollision({ prevRig: prev, sweptRig: swept, obstacles: frontWall, catalog });
     expect(result.contacted).toBe(true);
     expect(anyOverlap(rigFootprints(result.rig, catalog), frontWall)).toBe(false);
-    // Blocked in x (front bumper at the wall) but slid substantially in y toward the target.
-    expect(result.rig.car.rearAxle.x).toBeLessThan(3);
-    expect(result.rig.car.rearAxle.y).toBeGreaterThan(2);
+    // Blocked in x by the wall, but carried well along it in y.
+    expect(result.rig.car.rearAxle.x).toBeLessThan(swept.car.rearAxle.x);
+    expect(result.rig.car.rearAxle.y).toBeGreaterThan(-3);
   });
 
-  it("slides only partially at a mid-angle (45°) approach", () => {
-    const prev = rigAt(0, 0, false);
-    const swept = createInitialRig({ variantId: "sedan", position: { x: 4, y: 4 }, heading: 0 as Radians });
+  it("binds at a mid-angle (45°) approach — wheels cannot carry the body along the wall", () => {
+    const { prev, swept } = roll({ from: { x: 0, y: -4 }, heading: Math.PI / 4, distance: 8 });
     const result = resolveRigCollision({ prevRig: prev, sweptRig: swept, obstacles: frontWall, catalog });
     expect(result.contacted).toBe(true);
-    // Some slide survives, but clearly less than the full tangential projection (y = 4).
-    expect(result.rig.car.rearAxle.y).toBeGreaterThan(2);
-    expect(result.rig.car.rearAxle.y).toBeLessThan(3.5);
+    expect(anyOverlap(rigFootprints(result.rig, catalog), frontWall)).toBe(false);
+    // It stops where it met the wall — no crabbing on along it (its own contact-pose y, ±ε).
+    const blockedY = result.rig.car.rearAxle.y;
+    const blockedX = result.rig.car.rearAxle.x;
+    expect(blockedY + 4).toBeCloseTo(blockedX, 1); // still on its own 45° line: y+4 === x
+  });
+
+  it("reports what was hit, so damage can price a kerb differently from a wall", () => {
+    const wallHit = resolveRigCollision({ prevRig: rigAt(0), sweptRig: rigAt(4), obstacles: frontWall, catalog });
+    expect(wallHit.contactKind).toBe("solid");
+
+    const kerb = [curb(6, 0, 0.5, 6)];
+    const kerbHit = resolveRigCollision({ prevRig: rigAt(0), sweptRig: rigAt(4), obstacles: kerb, catalog });
+    expect(kerbHit.contacted).toBe(true); // a kerb still stops the rig...
+    expect(kerbHit.contactKind).toBe("curb"); // ...it just costs less
+  });
+
+  it("reports the kind of the deepest contact when a kerb and a wall are both touched", () => {
+    const obstacles = [curb(3.4, 0, 0.5, 6), wall(6, 0, 0.5, 6)];
+    const result = resolveRigCollision({ prevRig: rigAt(0), sweptRig: rigAt(4), obstacles, catalog });
+    expect(result.contactKind).toBe("curb"); // the kerb is what the car reaches first
+  });
+
+  it("keeps rolling along a kerb the trailer is scraping, however folded the trailer is", () => {
+    // The rig is translated by the CAR's motion, so a folded trailer must not veto the car's own
+    // alignment — reversing a caravan down a kerb-lined aisle is the whole game. Gated on the
+    // *contacting body* instead, a trailer folded 40° into the kerb dead-stopped the rig outright.
+    const kerb = [curb(6, 0, 0.5, 12)]; // a vertical strip; the car rolls almost parallel to it
+    const heading = Math.PI / 2 - 0.02; // 1.1° off parallel
+    const folded = (x: number, y: number, fold: number): Rig => {
+      const base = createInitialRig({
+        variantId: "sedan",
+        trailerVariantId: "caravan",
+        position: { x, y },
+        heading: heading as Radians,
+      });
+      return { ...base, trailer: { ...base.trailer!, heading: (heading + fold) as Radians } };
+    };
+    /** The x where this fold puts the trailer just shy of the kerb — the interesting start pose. */
+    const justClearX = (fold: number): number => {
+      let clear = 0;
+      let blocked = 8;
+      for (let i = 0; i < 30; i++) {
+        const mid = (clear + blocked) / 2;
+        const pose = folded(mid, -8, fold);
+        if (resolveRigCollision({ prevRig: pose, sweptRig: pose, obstacles: kerb, catalog }).contacted) blocked = mid;
+        else clear = mid;
+      }
+      return clear;
+    };
+
+    for (const fold of [0, 0.35, 0.7, 0.9]) {
+      const x = justClearX(fold);
+      const prev = folded(x, -8, fold);
+      const swept = folded(x + Math.cos(heading) * 3, -8 + Math.sin(heading) * 3, fold);
+      const result = resolveRigCollision({ prevRig: prev, sweptRig: swept, obstacles: kerb, catalog });
+      expect(result.rig.car.rearAxle.y + 8).toBeGreaterThan(2.5); // of a 3 m roll
+    }
+  });
+
+  it("scrubs off the speed a blocked step never got to use", () => {
+    const prev = { ...rigAt(0), car: { ...rigAt(0).car, speed: 5 as MPerS } };
+    const swept = { ...rigAt(4), car: { ...rigAt(4).car, speed: 5 as MPerS } };
+    const result = resolveRigCollision({ prevRig: prev, sweptRig: swept, obstacles: frontWall, catalog });
+    expect(result.contacted).toBe(true);
+    // Only part of the 4 m step happened, so only that part of the speed survives.
+    expect(result.rig.car.speed).toBeLessThan(5);
+    expect(result.rig.car.speed).toBeGreaterThanOrEqual(0);
   });
 
   it("does not slide sideways for a head-on perpendicular approach", () => {

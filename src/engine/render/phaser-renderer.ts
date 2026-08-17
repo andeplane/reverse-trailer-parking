@@ -5,7 +5,9 @@ import type { PhaserSurface } from "./phaser-surface";
 /** A signature of an entity's visual + size; if it changes, the drawn item must be recreated. */
 function visualKey(entity: Entity): string {
   const s = entity.size;
-  if (entity.visual.kind === "sprite") return `sprite:${entity.visual.texture}:${s.width}:${s.length}`;
+  if (entity.visual.kind === "sprite") {
+    return `sprite:${entity.visual.texture}:${entity.visual.tint ?? "none"}:${s.width}:${s.length}`;
+  }
   const st = entity.visual.style;
   return `rect:${st.fillColor}:${st.strokeColor}:${st.strokeWidth}:${st.cornerRadius}:${st.fillAlpha ?? 1}:${s.width}:${s.length}`;
 }
@@ -19,6 +21,7 @@ export function createPhaserRenderer(args: { surface: PhaserSurface }): Renderer
       surface.addSprite(entity.id, entity.visual.texture, {
         width: entity.size.width,
         length: entity.size.length,
+        ...(entity.visual.tint !== undefined ? { tint: entity.visual.tint } : {}),
       });
     } else {
       surface.addRect(entity.id, {

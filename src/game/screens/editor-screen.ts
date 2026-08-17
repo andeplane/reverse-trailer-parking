@@ -1,4 +1,5 @@
 import type { Radians } from "../../engine/math/angles";
+import { wheelZoomFactor } from "../../engine/input/wheel-zoom";
 import type { Metres } from "../../engine/math/units";
 import type { Vec2 } from "../../engine/math/vec2";
 import type { Entity, Renderer, RectStyle } from "../../engine/render/renderer";
@@ -37,6 +38,7 @@ import { BAY_LINE_WIDTH, tileGroundTexture } from "../view/tile-decor";
 import { fitZoom, PIXELS_PER_METRE } from "../view/camera-fit";
 import { worldToLayers } from "../view/world-view";
 import { worldToDebugEntities } from "../view/debug-view";
+import { pickLotCarColour } from "../vehicle/car-colours";
 import { allCarVariants } from "../vehicle/variants";
 import { findCarVariant, type VariantCatalog } from "../vehicle/vehicle-types";
 import type { Screen } from "./screen";
@@ -128,13 +130,18 @@ export function createEditorScreen(args: {
   /** Called with the draft AND the current persisted baseline (thread both back via `initial`/`savedState`). */
   onTest: (level: Level, savedState: string) => void;
   onSave: (level: Level) => void;
+  /** Source of randomness for car paint (injected so tests are deterministic). */
+  random?: () => number;
 }): Screen {
   const { renderer, controlsRoot, catalog, onExitToMenu, onTest, onSave } = args;
+  const random = args.random ?? Math.random;
 
   let level: Level = args.initial ?? emptyLevel(`custom-${Date.now().toString(36)}`);
   let tool: Tool = { kind: "paint", tile: "grass" };
   let brushRot = 0; // tile brush rotation, quarter turns
   let carHeading = 0; // car brush heading, radians (30° steps via R)
+  /** Paint the next dropped car gets — the ghost wears it, so the preview never lies. */
+  let pendingCarColour = pickLotCarColour(random);
   let carVariantIndex = 0;
   let selection: EditorHit | null = null;
   let debug = false;
@@ -376,6 +383,8 @@ export function createEditorScreen(args: {
   topButton("－", "editor-zoom", () => (camera.zoom /= 1.2));
   const fitBtn = topButton("⛶", "editor-zoom editor-fit", () => fitCamera());
   fitBtn.title = "Fit the whole map in view";
+  const paintBtn = topButton("🎨", "editor-paint", () => randomiseCarColours());
+  paintBtn.title = "Randomise the colour of every parked car";
   topButton("Test ▸", "editor-test", () => onTest(level, savedJson));
 
   // Dirty tracking: leaving the editor must NEVER silently lose work. The baseline is the
@@ -590,7 +599,7 @@ export function createEditorScreen(args: {
     // Zoom about the cursor: the world point under the pointer stays fixed on screen.
     const anchor = worldAt(we.clientX, we.clientY);
     const oldZoom = camera.zoom;
-    camera.zoom = Math.min(8, Math.max(0.1, camera.zoom * (we.deltaY < 0 ? 1.1 : 1 / 1.1)));
+    camera.zoom = Math.min(8, Math.max(0.1, camera.zoom * wheelZoomFactor(we)));
     const s = oldZoom / camera.zoom;
     camera.center = {
       x: anchor.x + (camera.center.x - anchor.x) * s,
@@ -664,13 +673,31 @@ export function createEditorScreen(args: {
 
   // --- Mutations ---------------------------------------------------------
   function carBrushCandidate(p: Vec2): LevelCar {
-    return levelCarAtCentre({ variantId: CAR_VARIANT_IDS[carVariantIndex]!, centre: p, heading: carHeading, catalog });
+    const car = levelCarAtCentre({ variantId: CAR_VARIANT_IDS[carVariantIndex]!, centre: p, heading: carHeading, catalog });
+    return { ...car, colour: pendingCarColour };
   }
   function placeCar(p: Vec2): void {
     const candidate = carBrushCandidate(p);
     if (carOverlaps(level, candidate, catalog)) return; // no car on top of another
     pushUndo();
     level = { ...level, placedCars: [...level.placedCars, candidate] };
+    // A fresh paint per car, so a hand-built lot looks like a lot and not a fleet. Rolled AFTER
+    // the drop so the ghost always shows the paint the next car will actually get.
+    pendingCarColour = pickLotCarColour(random);
+  }
+
+  /** Re-rolls the paint of every parked car — the quick way to make a lot look lived-in. */
+  function randomiseCarColours(): void {
+    if (level.placedCars.length === 0) {
+      toast("No parked cars to paint yet", true);
+      return;
+    }
+    pushUndo();
+    level = {
+      ...level,
+      placedCars: level.placedCars.map((car) => ({ ...car, colour: pickLotCarColour(random) })),
+    };
+    toast(`Repainted ${level.placedCars.length} car${level.placedCars.length === 1 ? "" : "s"} 🎨`);
   }
   function moveSelection(delta: Vec2): void {
     const sel = selection;
@@ -889,7 +916,7 @@ export function createEditorScreen(args: {
             position: obb.center,
             rotation: obb.rotation,
             size: { width: variant.bodyWidth, length: variant.bodyLength },
-            visual: { kind: "sprite", texture: variant.texture },
+            visual: { kind: "sprite", texture: variant.texture, tint: candidate.colour ?? pendingCarColour },
           },
         ],
         overlay: [

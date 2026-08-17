@@ -8,11 +8,15 @@ import { createApp } from "./game/screens/app-shell";
 // Ground/vehicle sprites. Bay lines + curbs are vector-drawn, so they need no textures
 // (tree renders grass on the ground + the tree canopy on top).
 const TEXTURE_NAMES = [
-  "car-red",
-  "car-blue",
-  "car-green",
-  "car-orange",
-  "car-purple",
+  "car-sedan",
+  "car-suv",
+  "car-hatchback",
+  "car-coupe",
+  "car-wagon",
+  "car-van",
+  "car-pickup",
+  "car-truck",
+  "car-rv",
   "trailer-white",
   "trailer-utility",
   "tile-asphalt",

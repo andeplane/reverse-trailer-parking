@@ -59,6 +59,8 @@ export function createApp(args: {
   const drawSeed = args.drawSeed ?? ((): number => Date.now() % 0x7fffffff);
   const bundled = [...args.levels];
   let active: Screen | null = null;
+  /** Which menu pack is expanded — remembered across menu visits (playing a pack level opens it). */
+  let openPack: Difficulty | null = ALL_DIFFICULTIES[0] ?? null;
 
   function customLevels(): Level[] {
     return storage ? loadCustomLevels(storage) : [];
@@ -231,6 +233,10 @@ export function createApp(args: {
           parent: controlsRoot,
           totalStars: storage ? totalStars(storage) : 0,
           packs: packViews(),
+          openPack,
+          onOpenPackChange: (difficulty) => {
+            openPack = difficulty;
+          },
           onPlayPackLevel: (difficulty, index) => app.playPackLevel(difficulty, index),
           customLevels: customLevels(),
           onPlay: (level) => app.playLevel(level),
@@ -268,6 +274,7 @@ export function createApp(args: {
       );
     },
     playPackLevel(difficulty: Difficulty, index: number): void {
+      openPack = difficulty; // coming back from the run lands on the pack it came from
       const seed = packLevelSeed({ difficulty, index });
       const generated = generateRandom(difficulty, seed);
       if (!generated) {
@@ -300,6 +307,7 @@ export function createApp(args: {
           return;
         }
       }
+      openPack = difficulty;
       const generated = generateRandom(difficulty, seed);
       if (!generated) {
         app.showMenu();

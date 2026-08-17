@@ -2,6 +2,7 @@ import type { Clock } from "../../engine/loop/clock";
 import type { InputSource } from "../../engine/input/input-source";
 import { createKeyboardInput } from "../../engine/input/keyboard-input";
 import { createTouchInput } from "../../engine/input/touch-input";
+import { wheelZoomFactor } from "../../engine/input/wheel-zoom";
 import type { Renderer } from "../../engine/render/renderer";
 import { createControlsOverlay } from "../hud/controls-overlay";
 import { createLoseOverlay, type LoseOverlay } from "../hud/lose-overlay";
@@ -239,7 +240,7 @@ export function createPlayScreen(args: {
     we.preventDefault();
     camera.zoomAt({
       anchor: renderer.screenToWorld(we.clientX, we.clientY),
-      factor: Math.exp(-we.deltaY * 0.0015),
+      factor: wheelZoomFactor(we),
       rig: rigPosition(),
     });
   };

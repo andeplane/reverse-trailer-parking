@@ -22,17 +22,19 @@ class FakeClock implements Clock {
   }
 }
 
-function fakeInput(input: ControlInput): InputSource {
-  let disposed = false;
-  return {
+function fakeInput(input: ControlInput): InputSource & { wasDisposed: boolean; resets: number } {
+  const fake = {
+    resets: 0,
+    wasDisposed: false,
     read: () => input,
-    dispose: () => {
-      disposed = true;
+    reset(): void {
+      fake.resets += 1;
     },
-    get wasDisposed() {
-      return disposed;
+    dispose(): void {
+      fake.wasDisposed = true;
     },
-  } as InputSource & { wasDisposed: boolean };
+  };
+  return fake;
 }
 
 function fakeRenderer(): Renderer & {
@@ -118,6 +120,20 @@ describe("createSandbox", () => {
     sandbox.reset();
     const resetFollow = renderer.followCalls.at(-1)!;
     expect(resetFollow).toEqual({ x: 0, y: 0 });
+  });
+
+  it("reset() clears the input's remembered steer so the fresh rig starts straight", () => {
+    const clock = new FakeClock();
+    const input = fakeInput({ throttle: 0, steer: 0.9 });
+    const sandbox = createSandbox({
+      clock,
+      input,
+      renderer: fakeRenderer(),
+      world: buildWorld(),
+      dt: (1 / 60) as Seconds,
+    });
+    sandbox.reset();
+    expect(input.resets).toBe(1);
   });
 
   it("reset() invokes the onReset callback", () => {

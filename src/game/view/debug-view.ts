@@ -37,8 +37,8 @@ function obbEntity(id: string, obb: Obb, strokeColor: number): Entity {
 export function worldToDebugEntities(world: World, catalog: VariantCatalog): Entity[] {
   const rig = toRig(drivableCar(world));
   const rigObbs = rigFootprints(rig, catalog).map((obb, i) => obbEntity(`debug:rig:${i}`, obb, RIG_COLOR));
-  const obstacleObbs = obstacleFootprints(world).map((obb, i) =>
-    obbEntity(`debug:obstacle:${i}`, obb, OBSTACLE_COLOR),
+  const obstacleObbs = obstacleFootprints(world).map((obstacle, i) =>
+    obbEntity(`debug:obstacle:${i}`, obstacle.obb, OBSTACLE_COLOR),
   );
   const bounds: Entity = {
     id: "debug:bounds",

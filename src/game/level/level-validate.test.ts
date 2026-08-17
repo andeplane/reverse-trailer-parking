@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { PLAYER_CAR_COLOUR } from "../vehicle/car-colours";
 import { allCarVariants, allTrailerVariants, createVariantCatalog } from "../vehicle/variants";
 import type { Level } from "./level-types";
 import { filledGrid } from "./tile-types";
@@ -48,6 +49,28 @@ describe("validateLevel", () => {
     expect(() =>
       validateLevel(level({ drivable: { variantId: "nope", position: { x: 0, y: 0 }, heading: 0 } }), catalog),
     ).toThrow(RangeError);
+  });
+
+  it("keeps red for the player: a parked car may not wear it", () => {
+    const parked = { variantId: "sedan", position: { x: 6, y: 0 }, heading: 0 };
+    expect(() =>
+      validateLevel(level({ placedCars: [{ ...parked, colour: PLAYER_CAR_COLOUR }] }), catalog),
+    ).toThrow(RangeError);
+    // ...while the player's own car is of course allowed to be red.
+    expect(() =>
+      validateLevel(
+        level({ drivable: { variantId: "sedan", position: { x: 0, y: 0 }, heading: 0, colour: PLAYER_CAR_COLOUR } }),
+        catalog,
+      ),
+    ).not.toThrow();
+    expect(() => validateLevel(level({ placedCars: [{ ...parked, colour: 0x2f6fb5 }] }), catalog)).not.toThrow();
+  });
+
+  it("rejects a colour that is not a 24-bit integer", () => {
+    const parked = { variantId: "sedan", position: { x: 6, y: 0 }, heading: 0 };
+    expect(() => validateLevel(level({ placedCars: [{ ...parked, colour: -1 }] }), catalog)).toThrow(RangeError);
+    expect(() => validateLevel(level({ placedCars: [{ ...parked, colour: 0x1000000 }] }), catalog)).toThrow(RangeError);
+    expect(() => validateLevel(level({ placedCars: [{ ...parked, colour: 1.5 }] }), catalog)).toThrow(RangeError);
   });
 
   it("rejects an exit that is not on a playfield edge", () => {
