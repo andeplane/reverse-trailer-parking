@@ -40,6 +40,9 @@ export function createScriptedInput(args: {
       }
       return program[program.length - 1]!.input;
     },
+    reset(): void {
+      startTime = null; // replay the program from the top alongside the restarted world
+    },
     dispose(): void {},
   };
 }

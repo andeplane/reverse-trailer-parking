@@ -160,7 +160,11 @@ parking game (glossy cars, textured asphalt lot with bay lines + grass borders).
 - **Collision ≠ sprite width**: the OBB uses a per-variant `collisionWidth` (the body, excluding
   door mirrors) so collision matches the visible car, not the sprite's outer extent.
 - **Steering holds** (no self-centring); at the jackknife limit the car **binds** (stops) rather than
-  sliding the trailer sideways.
+  sliding the trailer sideways. That held angle lives in the **input source**, not the world, so
+  every `InputSource` implements **`reset()`** and `sandbox.reset()` calls it — otherwise a restart
+  hands the fresh rig the last run's lock and the wheels snap straight then turn back. `reset()`
+  drops only *remembered* intent (held wheel angle, touch slider position), never a key/pedal that
+  is currently held down.
 - `src/game/view/world-view.ts` maps `World → Entity[]` where each `Entity` is a `sprite` or a `rect`
   (`EntityVisual` union). `src/engine/render/create-phaser-surface.ts` owns the Phaser glue: `42→32`
   pixels/metre, a **y-flip** (world +y up ↔ screen +y down) and rotation mapping `π/2 − θ` for nose-up

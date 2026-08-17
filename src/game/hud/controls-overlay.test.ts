@@ -71,6 +71,14 @@ describe("createControlsOverlay", () => {
     expect(overlay.steerValue()).toBe(0.5);
   });
 
+  it("centreSteer() snaps the slider back to the middle", () => {
+    slider().value = "90";
+    expect(overlay.steerValue()).toBeGreaterThan(0);
+    overlay.centreSteer();
+    expect(slider().value).toBe("50");
+    expect(overlay.steerValue()).toBe(0);
+  });
+
   it("fires the reset callback when the reset button is pressed", () => {
     let resets = 0;
     overlay.setOnReset(() => (resets += 1));

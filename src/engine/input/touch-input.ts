@@ -5,6 +5,8 @@ export interface TouchControls {
   isForwardHeld(): boolean;
   isReverseHeld(): boolean;
   steerValue(): number;
+  /** Returns the steering slider to centre (the run restarted — the wheels are straight again). */
+  centreSteer(): void;
 }
 
 /**
@@ -18,6 +20,9 @@ export function createTouchInput(args: { controls: TouchControls }): InputSource
     read(): ControlInput {
       const throttle = (controls.isForwardHeld() ? 1 : 0) + (controls.isReverseHeld() ? -1 : 0);
       return clampControlInput({ throttle, steer: controls.steerValue() });
+    },
+    reset(): void {
+      controls.centreSteer(); // the slider IS the held wheel angle, so it has to come back to 0
     },
     dispose(): void {},
   };

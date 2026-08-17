@@ -124,6 +124,26 @@ describe("createKeyboardInput", () => {
     void input;
   });
 
+  it("drops the held wheel angle on reset(), but keeps a key that is still down", () => {
+    const target = new EventTarget();
+    const clock = new FakeClock();
+    const input = createKeyboardInput({ target, clock, steerRate: 2 });
+    input.read();
+    press(target, "ArrowLeft");
+    press(target, "ArrowUp");
+    clock.advance(500);
+    expect(input.read().steer).toBeCloseTo(1);
+
+    input.reset();
+    clock.advance(0);
+    const afterReset = input.read();
+    expect(afterReset.steer).toBe(0); // wheels straight again — the angle is not remembered
+    expect(afterReset.throttle).toBe(1); // the pedal is still pressed, so it still drives
+
+    clock.advance(250); // ...and holding the steer key ramps up again from straight
+    expect(input.read().steer).toBeCloseTo(0.5);
+  });
+
   it("stops responding after dispose()", () => {
     const target = new EventTarget();
     const clock = new FakeClock();

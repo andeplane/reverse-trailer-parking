@@ -75,6 +75,7 @@ export function createSandbox(args: {
 
     reset(): void {
       world = initialWorld;
+      input.reset(); // else the held steer angle survives and the fresh rig turns its wheels back
       onReset?.();
       render();
     },

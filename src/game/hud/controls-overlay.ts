@@ -5,6 +5,8 @@ export interface ControlsOverlay {
   isReverseHeld(): boolean;
   /** Current steer target in [-1, 1] (slider centre = 0). */
   steerValue(): number;
+  /** Snaps the slider back to centre — the wheels are straight again after a restart. */
+  centreSteer(): void;
   /** Registers the callback fired when the reset button is pressed. */
   setOnReset(callback: () => void): void;
   dispose(): void;
@@ -95,6 +97,9 @@ export function createControlsOverlay(args: { parent: HTMLElement }): ControlsOv
     isForwardHeld: () => forwardHeld,
     isReverseHeld: () => reverseHeld,
     steerValue: () => (Number(steer.value) - 50) / 50,
+    centreSteer: () => {
+      steer.value = "50";
+    },
     setOnReset: (callback) => {
       onReset = callback;
     },
