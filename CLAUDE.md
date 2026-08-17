@@ -58,6 +58,11 @@ machine** in `src/game/screens/` (`AppShell`) over one shared Phaser surface —
   the speed into the contact normal, only on the clear→contact edge (grinding =
   one hit) and never below the 0.5 m/s dead-zone; a HUD health bar drains, and
   ≥ 100 points shows the lose overlay (`hud/lose-overlay.ts`; win takes precedence).
+  **Not everything you hit is a crash**: `obstacleFootprints` returns typed
+  `Obstacle`s (`{obb, kind}`) and the resolver reports the `contactKind` of the
+  deepest contact, so **kerbs** — which ring every grass island, clipped constantly
+  while manoeuvring — are free below a 2 m/s dead-zone and cost 0.2× above it,
+  while cars/walls/hedges charge in full.
   **A jackknife is a crash too**: binding at the articulation limit charges the
   same 4·v² on the speed the fold arrests, once per fold (free→bound edge, so
   holding it there is one hit) — `stepRigWithStatus` reports the bind and

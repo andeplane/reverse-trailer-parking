@@ -29,6 +29,7 @@ function world(cars: CarState[], overrides: Partial<World> = {}): World {
     cars,
     boundary: [],
     solids: [],
+    curbs: [],
     grid: TILE_GRID,
     exit: null,
     bounds: { width: 20, height: 20 },

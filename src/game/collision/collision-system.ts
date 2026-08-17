@@ -2,6 +2,7 @@ import { normaliseAngle, type Radians } from "../../engine/math/angles";
 import type { MPerS } from "../../engine/math/units";
 import { add, dot, length, normalise, scale, sub, type Vec2 } from "../../engine/math/vec2";
 import { obbMtv, type Obb } from "../../engine/math/obb";
+import type { ImpactKind } from "../vehicle/damage";
 import { carFootprint, hitchWorld, trailerFootprint } from "../vehicle/vehicle-geometry";
 import {
   findCarVariant,
@@ -37,18 +38,33 @@ export function rigFootprints(rig: Rig, catalog: VariantCatalog): Obb[] {
   return footprints;
 }
 
-/** Immovable obstacles: every placed car (and its trailer), collidable props, plus boundary walls. */
-export function obstacleFootprints(world: World): Obb[] {
-  const footprints: Obb[] = [];
+/** An immovable obstacle: its footprint plus what it is made of, which prices an impact with it. */
+export interface Obstacle {
+  obb: Obb;
+  kind: ImpactKind;
+}
+
+function solidObstacle(obb: Obb): Obstacle {
+  return { obb, kind: "solid" };
+}
+
+/** Immovable obstacles: every placed car (and its trailer), collidable props, kerbs, and walls. */
+export function obstacleFootprints(world: World): Obstacle[] {
+  const obstacles: Obstacle[] = [];
   for (const car of placedCars(world)) {
     const carVariant = findCarVariant(world.catalog, car.variantId);
-    footprints.push(carFootprint(car, carVariant));
+    obstacles.push(solidObstacle(carFootprint(car, carVariant)));
     if (car.trailer) {
       const trailerVariant = findTrailerVariant(world.catalog, car.trailer.variantId);
-      footprints.push(trailerFootprint(car.trailer, hitchWorld(car, carVariant), trailerVariant));
+      obstacles.push(solidObstacle(trailerFootprint(car.trailer, hitchWorld(car, carVariant), trailerVariant)));
     }
   }
-  return [...footprints, ...world.solids, ...world.boundary];
+  return [
+    ...obstacles,
+    ...world.solids.map(solidObstacle),
+    ...world.curbs.map((obb): Obstacle => ({ obb, kind: "curb" })),
+    ...world.boundary.map(solidObstacle),
+  ];
 }
 
 function angleLerp(a: number, b: number, t: number): Radians {
@@ -80,17 +96,17 @@ function translateRig(rig: Rig, delta: Vec2): Rig {
   return { car, trailer: rig.trailer };
 }
 
-function overlapsAny(footprints: Obb[], obstacles: Obb[]): boolean {
+function overlapsAny(footprints: Obb[], obstacles: Obstacle[]): boolean {
   for (const f of footprints) {
     for (const o of obstacles) {
-      if (obbMtv(f, o) !== null) return true;
+      if (obbMtv(f, o.obb) !== null) return true;
     }
   }
   return false;
 }
 
 /** Push the rig out of any residual overlap, resolving the deepest contact each pass. */
-function pushOut(rig: Rig, obstacles: Obb[], catalog: VariantCatalog): Rig {
+function pushOut(rig: Rig, obstacles: Obstacle[], catalog: VariantCatalog): Rig {
   let current = rig;
   for (let iter = 0; iter < MTV_ITERATIONS; iter++) {
     const footprints = rigFootprints(current, catalog);
@@ -98,7 +114,7 @@ function pushOut(rig: Rig, obstacles: Obb[], catalog: VariantCatalog): Rig {
     let deepestMag = 0;
     for (const f of footprints) {
       for (const o of obstacles) {
-        const mtv = obbMtv(f, o);
+        const mtv = obbMtv(f, o.obb);
         if (mtv) {
           const mag = length(mtv);
           if (mag > deepestMag) {
@@ -118,32 +134,29 @@ function pushOut(rig: Rig, obstacles: Obb[], catalog: VariantCatalog): Rig {
  * that is touching — its rotation is the rolling axis the slide has to respect. */
 function deepestContact(
   rig: Rig,
-  obstacles: Obb[],
+  obstacles: Obstacle[],
   catalog: VariantCatalog,
-): { normal: Vec2; rollingAxis: Radians } | null {
+): { normal: Vec2; rollingAxis: Radians; kind: ImpactKind } | null {
   const footprints = rigFootprints(rig, catalog);
   let deepest: Vec2 | null = null;
   let deepestMag = 0;
   let rollingAxis = 0 as Radians;
+  let kind: ImpactKind = "solid";
   for (const f of footprints) {
     for (const o of obstacles) {
-      const mtv = obbMtv(f, o);
+      const mtv = obbMtv(f, o.obb);
       if (mtv) {
         const mag = length(mtv);
         if (mag > deepestMag) {
           deepestMag = mag;
           deepest = mtv;
           rollingAxis = f.rotation;
+          kind = o.kind;
         }
       }
     }
   }
-  return deepest ? { normal: normalise(deepest), rollingAxis } : null;
-}
-
-/** Deepest separation normal (unit) of a rig against obstacles, or null if clear. */
-function contactNormal(rig: Rig, obstacles: Obb[], catalog: VariantCatalog): Vec2 | null {
-  return deepestContact(rig, obstacles, catalog)?.normal ?? null;
+  return deepest ? { normal: normalise(deepest), rollingAxis, kind } : null;
 }
 
 /**
@@ -160,7 +173,7 @@ function slideAlongContact(args: {
   contactPose: Rig;
   sweptRig: Rig;
   blockedPose: Rig;
-  obstacles: Obb[];
+  obstacles: Obstacle[];
   catalog: VariantCatalog;
 }): Rig {
   const { contactPose, sweptRig, blockedPose, obstacles, catalog } = args;
@@ -218,28 +231,32 @@ function bleedSpeed(args: { prevRig: Rig; sweptRig: Rig; resolved: Rig }): Rig {
 /**
  * Resolves the drivable rig against immovable obstacles: block-at-contact by bisecting the taken
  * sub-step (tunnelling-proof because `prevRig` is known clear), then MTV push-out of any residue.
- * Deterministic; placed obstacles are never moved. On contact, `contactNormal` is the deepest
- * separation normal (unit, pointing out of the obstacle) — the impact direction for damage — and
- * the car's speed is scrubbed to the fraction of the step that survived.
+ * Deterministic; placed obstacles are never moved. On contact it reports the deepest contact —
+ * `contactNormal` (unit, pointing out of the obstacle) and `contactKind` (what was hit), the
+ * direction and the price of the impact for damage — and the car's speed is scrubbed to the
+ * fraction of the step that survived.
  */
 export function resolveRigCollision(args: {
   prevRig: Rig;
   sweptRig: Rig;
-  obstacles: Obb[];
+  obstacles: Obstacle[];
   catalog: VariantCatalog;
   iterations?: number;
-}): { rig: Rig; contacted: boolean; contactNormal: Vec2 | null } {
+}): { rig: Rig; contacted: boolean; contactNormal: Vec2 | null; contactKind: ImpactKind | null } {
   const { prevRig, sweptRig, obstacles, catalog } = args;
   const iterations = args.iterations ?? DEFAULT_BISECT_ITERATIONS;
+  const clear = { rig: sweptRig, contacted: false, contactNormal: null, contactKind: null } as const;
 
-  if (obstacles.length === 0) return { rig: sweptRig, contacted: false, contactNormal: null };
+  if (obstacles.length === 0) return clear;
 
   // If we somehow started overlapping, just push out from the previous pose.
   if (overlapsAny(rigFootprints(prevRig, catalog), obstacles)) {
+    const contact = deepestContact(prevRig, obstacles, catalog);
     return {
       rig: pushOut(prevRig, obstacles, catalog),
       contacted: true,
-      contactNormal: contactNormal(prevRig, obstacles, catalog),
+      contactNormal: contact?.normal ?? null,
+      contactKind: contact?.kind ?? null,
     };
   }
 
@@ -252,7 +269,7 @@ export function resolveRigCollision(args: {
       break;
     }
   }
-  if (firstHit === -1) return { rig: sweptRig, contacted: false, contactNormal: null };
+  if (firstHit === -1) return clear;
 
   // Bisect between the last clear sample and the first overlapping one for the exact contact pose.
   let lo = (firstHit - 1) / PATH_SAMPLES;
@@ -266,8 +283,13 @@ export function resolveRigCollision(args: {
 
   const contactPose = lerpRig(prevRig, sweptRig, lo, catalog);
   const blockedPose = lerpRig(prevRig, sweptRig, hi, catalog); // barely overlapping → clean normal
-  const normal = contactNormal(blockedPose, obstacles, catalog);
+  const contact = deepestContact(blockedPose, obstacles, catalog);
   const slid = slideAlongContact({ contactPose, sweptRig, blockedPose, obstacles, catalog });
   const resolved = pushOut(slid, obstacles, catalog);
-  return { rig: bleedSpeed({ prevRig, sweptRig, resolved }), contacted: true, contactNormal: normal };
+  return {
+    rig: bleedSpeed({ prevRig, sweptRig, resolved }),
+    contacted: true,
+    contactNormal: contact?.normal ?? null,
+    contactKind: contact?.kind ?? null,
+  };
 }

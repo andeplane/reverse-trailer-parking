@@ -38,6 +38,7 @@ export function createWorld(args: {
   boundary: Obb[];
   catalog: VariantCatalog;
   solids?: Obb[];
+  curbs?: Obb[];
   grid?: TileGrid;
   exit?: ExitLine | null;
   bounds?: { width: number; height: number };
@@ -52,6 +53,7 @@ export function createWorld(args: {
     cars,
     boundary: args.boundary,
     solids: args.solids ?? [],
+    curbs: args.curbs ?? [],
     grid,
     exit: args.exit ?? null,
     bounds: args.bounds ?? { width: gridWidth(grid), height: gridHeight(grid) },
@@ -94,7 +96,7 @@ export function stepWorld(args: { world: World; input: ControlInput; dt: Seconds
   const { world, input, dt } = args;
   const prevRig = toRig(drivableCar(world));
   const { rig: sweptRig, jackknifed } = stepRigWithStatus({ rig: prevRig, input, dt, catalog: world.catalog });
-  const { rig: resolvedRig, contacted, contactNormal } = resolveRigCollision({
+  const { rig: resolvedRig, contacted, contactNormal, contactKind } = resolveRigCollision({
     prevRig,
     sweptRig,
     obstacles: obstacleFootprints(world),
@@ -112,12 +114,12 @@ export function stepWorld(args: { world: World; input: ControlInput; dt: Seconds
       };
       // Speed component driving into the surface; grazing touches charge little, head-ons fully.
       const impactSpeed = Math.max(0, -dot(motion, contactNormal)) * Math.abs(speed);
-      damage += damagePointsForImpact(impactSpeed);
+      damage += damagePointsForImpact({ speed: impactSpeed, kind: contactKind ?? "solid" });
     }
   }
   // The fold arrests the whole rig, so the speed it was travelling at is the impact speed.
   if (jackknifed && !world.rigJackknifed) {
-    damage += damagePointsForImpact(prevRig.car.speed as number);
+    damage += damagePointsForImpact({ speed: prevRig.car.speed as number, kind: "solid" });
   }
 
   const steppedCar = fromRig(resolvedRig);

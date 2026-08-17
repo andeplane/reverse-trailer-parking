@@ -108,7 +108,8 @@ export function levelToWorld(level: Level, catalog: VariantCatalog): World {
   return createWorld({
     cars,
     boundary: boundaryWithExitGap(bounds, level.exit),
-    solids: [...solidTileFootprints(level.grid), ...curbFootprints(level.grid)],
+    solids: solidTileFootprints(level.grid),
+    curbs: curbFootprints(level.grid),
     grid: level.grid,
     exit: level.exit,
     bounds,

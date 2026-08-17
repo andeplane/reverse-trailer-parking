@@ -2,7 +2,12 @@ import { clamp, normaliseAngle, type Radians } from "../../../engine/math/angles
 import type { Obb } from "../../../engine/math/obb";
 import { add, midpoint, rotate, scale, sub, type Vec2 } from "../../../engine/math/vec2";
 import { PLAY_DT } from "../../sandbox";
-import { obstacleFootprints, resolveRigCollision, rigFootprints } from "../../collision/collision-system";
+import {
+  obstacleFootprints,
+  resolveRigCollision,
+  rigFootprints,
+  type Obstacle,
+} from "../../collision/collision-system";
 import { stepRig } from "../../vehicle/vehicle-model";
 import { hitchWorld, trailerWheelWorldPositions } from "../../vehicle/vehicle-geometry";
 import { drivableCar, findCarVariant, findTrailerVariant, fromRig, toRig, type VariantCatalog, type World } from "../../vehicle/vehicle-types";
@@ -75,11 +80,11 @@ function aabbOf(obb: Obb): Aabb {
  */
 function makeFastStepper(world: World): (current: World, input: { throttle: number; steer: number }) => World {
   const obstacles = obstacleFootprints(world);
-  const obstacleAabbs = obstacles.map(aabbOf);
+  const obstacleAabbs = obstacles.map((o) => aabbOf(o.obb));
   return (current, input) => {
     const prevRig = toRig(drivableCar(current));
     const sweptRig = stepRig({ rig: prevRig, input, dt: PLAY_DT, catalog: current.catalog });
-    const near: Obb[] = [];
+    const near: Obstacle[] = [];
     // Generous reach: rig half-diagonal (~3.5 m) + step + slack. Distant obstacles cannot
     // interact with this sub-step, so filtering them is semantics-preserving.
     const reach = 6;

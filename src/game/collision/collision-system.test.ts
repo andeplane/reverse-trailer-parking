@@ -7,13 +7,29 @@ import { createVariantCatalog } from "../vehicle/variants";
 import { filledGrid } from "../level/tile-types";
 import { createInitialRig } from "../vehicle/world";
 import type { Rig } from "../vehicle/vehicle-types";
-import { lerpRig, obstacleFootprints, resolveRigCollision, rigFootprints } from "./collision-system";
+import {
+  lerpRig,
+  obstacleFootprints,
+  resolveRigCollision,
+  rigFootprints,
+  type Obstacle,
+} from "./collision-system";
 
 const catalog = createVariantCatalog();
 const TILE_GRID = filledGrid(4, 4, 5);
 
-function wall(cx: number, cy: number, halfL: number, halfW: number): Obb {
+function wallObb(cx: number, cy: number, halfL: number, halfW: number): Obb {
   return { center: { x: cx, y: cy }, halfL, halfW, rotation: 0 as Radians };
+}
+
+/** A solid obstacle (a wall) — the default thing to crash into. */
+function wall(cx: number, cy: number, halfL: number, halfW: number): Obstacle {
+  return { obb: wallObb(cx, cy, halfL, halfW), kind: "solid" };
+}
+
+/** The same strip, but a low kerb: collidable all the same, far cheaper to clip. */
+function curb(cx: number, cy: number, halfL: number, halfW: number): Obstacle {
+  return { obb: wallObb(cx, cy, halfL, halfW), kind: "curb" };
 }
 
 function rigAt(x: number, heading = 0, withTrailer = true): Rig {
@@ -25,8 +41,8 @@ function rigAt(x: number, heading = 0, withTrailer = true): Rig {
   });
 }
 
-function anyOverlap(footprints: Obb[], obstacles: Obb[]): boolean {
-  return footprints.some((f) => obstacles.some((o) => obbMtv(f, o) !== null));
+function anyOverlap(footprints: Obb[], obstacles: Obstacle[]): boolean {
+  return footprints.some((f) => obstacles.some((o) => obbMtv(f, o.obb) !== null));
 }
 
 /**
@@ -55,7 +71,7 @@ describe("rigFootprints", () => {
 
 describe("obstacleFootprints", () => {
   it("collects placed cars, their trailers, and boundary walls", () => {
-    const boundary = [wall(0, 20, 1, 20)];
+    const boundary = [wallObb(0, 20, 1, 20)];
     const world = {
       cars: [
         createCar("drivable", 0),
@@ -63,7 +79,7 @@ describe("obstacleFootprints", () => {
         createCarWithTrailer("placed", -10),
       ],
       boundary,
-      solids: [], grid: TILE_GRID, exit: null, bounds: { width: 100, height: 100 },
+      solids: [], curbs: [], grid: TILE_GRID, exit: null, bounds: { width: 100, height: 100 },
       catalog,
       damage: 0,
       rigInContact: false,
@@ -74,7 +90,7 @@ describe("obstacleFootprints", () => {
   });
 
   it("is empty when there are no placed cars or walls", () => {
-    const world = { cars: [createCar("drivable", 0)], boundary: [], solids: [], grid: TILE_GRID, exit: null, bounds: { width: 100, height: 100 }, catalog, damage: 0, rigInContact: false, rigJackknifed: false };
+    const world = { cars: [createCar("drivable", 0)], boundary: [], solids: [], curbs: [], grid: TILE_GRID, exit: null, bounds: { width: 100, height: 100 }, catalog, damage: 0, rigInContact: false, rigJackknifed: false };
     expect(obstacleFootprints(world)).toHaveLength(0);
   });
 });
@@ -198,6 +214,22 @@ describe("resolveRigCollision", () => {
     const blockedY = result.rig.car.rearAxle.y;
     const blockedX = result.rig.car.rearAxle.x;
     expect(blockedY + 4).toBeCloseTo(blockedX, 1); // still on its own 45° line: y+4 === x
+  });
+
+  it("reports what was hit, so damage can price a kerb differently from a wall", () => {
+    const wallHit = resolveRigCollision({ prevRig: rigAt(0), sweptRig: rigAt(4), obstacles: frontWall, catalog });
+    expect(wallHit.contactKind).toBe("solid");
+
+    const kerb = [curb(6, 0, 0.5, 6)];
+    const kerbHit = resolveRigCollision({ prevRig: rigAt(0), sweptRig: rigAt(4), obstacles: kerb, catalog });
+    expect(kerbHit.contacted).toBe(true); // a kerb still stops the rig...
+    expect(kerbHit.contactKind).toBe("curb"); // ...it just costs less
+  });
+
+  it("reports the kind of the deepest contact when a kerb and a wall are both touched", () => {
+    const obstacles = [curb(3.4, 0, 0.5, 6), wall(6, 0, 0.5, 6)];
+    const result = resolveRigCollision({ prevRig: rigAt(0), sweptRig: rigAt(4), obstacles, catalog });
+    expect(result.contactKind).toBe("curb"); // the kerb is what the car reaches first
   });
 
   it("scrubs off the speed a blocked step never got to use", () => {

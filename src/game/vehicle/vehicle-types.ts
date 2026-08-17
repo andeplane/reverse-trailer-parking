@@ -68,8 +68,10 @@ export interface Rig {
 export interface World {
   cars: CarState[];
   boundary: Obb[];
-  /** Collidable footprints of solid tiles (curbs, hedges, trees). */
+  /** Collidable footprints of solid props (hedges, trees) — hitting one is a full crash. */
   solids: Obb[];
+  /** Kerb strips: collidable like a solid, but only a low lip, so impacts with them cost little. */
+  curbs: Obb[];
   /** The tile map (for rendering). */
   grid: TileGrid;
   exit: ExitLine | null;
