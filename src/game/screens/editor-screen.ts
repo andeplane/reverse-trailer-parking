@@ -1,4 +1,5 @@
 import type { Radians } from "../../engine/math/angles";
+import { wheelZoomFactor } from "../../engine/input/wheel-zoom";
 import type { Metres } from "../../engine/math/units";
 import type { Vec2 } from "../../engine/math/vec2";
 import type { Entity, Renderer, RectStyle } from "../../engine/render/renderer";
@@ -590,7 +591,7 @@ export function createEditorScreen(args: {
     // Zoom about the cursor: the world point under the pointer stays fixed on screen.
     const anchor = worldAt(we.clientX, we.clientY);
     const oldZoom = camera.zoom;
-    camera.zoom = Math.min(8, Math.max(0.1, camera.zoom * (we.deltaY < 0 ? 1.1 : 1 / 1.1)));
+    camera.zoom = Math.min(8, Math.max(0.1, camera.zoom * wheelZoomFactor(we)));
     const s = oldZoom / camera.zoom;
     camera.center = {
       x: anchor.x + (camera.center.x - anchor.x) * s,

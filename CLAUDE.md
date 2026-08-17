@@ -121,7 +121,11 @@ vehicles — `worldToLayers`). Keys: **R** rotates the hovered thing — cars in
 **−30° steps** (clockwise on screen), tiles a quarter turn; **Q** picks up whatever
 is hovered as the active tool (Factorio-style copy), Q again toggles Select/Move;
 **⌫** deletes the selected/hovered placed car; ⌘Z undo, **⇧⌘Z/Ctrl+Y redo**; Esc
-cancel; Space/right-drag pans; wheel zooms. **Touch:** two-pointer **pinch
+cancel; Space/right-drag pans; wheel zooms — every wheel-driven zoom (editor and
+play free-look) goes through `engine/input/wheel-zoom.ts` `wheelZoomFactor`, which
+is **exponential in the pixels scrolled** (deltaMode-aware, per-event capped): a
+fixed step per event makes a Mac trackpad, which fires dozens of tiny events per
+swipe, wildly over-sensitive. **Touch:** two-pointer **pinch
 zoom/pan**; selecting shows a **⟲ ⟳ 🗑 toolbar**. Leaving with unsaved changes
 opens an in-app **Save & exit / Discard / Cancel** dialog (dirty baseline =
 last-persisted state, threaded through Test ▸ round-trips). Save **validates** and
