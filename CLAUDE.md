@@ -67,6 +67,12 @@ machine** in `src/game/screens/` (`AppShell`) over one shared Phaser surface —
   0.5× the 4·v² on the speed the fold arrests, once per fold (free→bound edge, so
   holding it there is one hit) — `stepRigWithStatus` reports the bind and
   `World.rigJackknifed` carries the edge. It also costs the damage-free 3rd star.
+  **No run starts dead straight**: the play screen folds the trailer a random
+  ±3° off the car at level open (`vehicle/start-jitter.ts` `jitterStartHitch`,
+  injectable `random`, rolled once per open so Restart reproduces the attempt);
+  a fold that would start the trailer inside a wall flips sign, and if neither
+  side is clear the start is left alone. `levelToWorld` stays pure — the random
+  generator and its verification replay never see the jitter.
 - **Editor** (`editor-screen.ts` + pure `editor-model.ts`) — see below.
 - The **app shell owns the bundled/custom split**: `createApp` takes bundled
   levels + a `LevelStorage`; custom levels merge on top by id on every menu
