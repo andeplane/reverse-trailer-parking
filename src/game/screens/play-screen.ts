@@ -15,6 +15,7 @@ import { hasRigCrossedExit } from "../level/win";
 import { starsForRun } from "../level/stars";
 import { rigFootprints } from "../collision/collision-system";
 import { createSandbox, type Sandbox } from "../sandbox";
+import { jitterStartHitch } from "../vehicle/start-jitter";
 import { drivableCar, toRig, type VariantCatalog } from "../vehicle/vehicle-types";
 import type { Vec2 } from "../../engine/math/vec2";
 import { fitZoom } from "../view/camera-fit";
@@ -50,12 +51,16 @@ export function createPlayScreen(args: {
    * win overlay. Left unset for levels that don't track stars (custom/editor levels). */
   onStars?: (stars: number) => void;
   isTouch?: boolean;
+  /** Source of the start-of-run trailer jitter; injected so tests get a fixed start state. */
+  random?: () => number;
 }): Screen {
   const { clock, renderer, controlsRoot, level, catalog, onExitToMenu, onNextLevel, isLastLevel, onStars } = args;
   const isTouch =
     args.isTouch ?? (window.matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0);
 
-  let world = levelToWorld(level, catalog);
+  // A run never starts perfectly collinear: the trailer begins folded a few degrees off the car.
+  // Rolled once per level open, so restarting an attempt reproduces the same start state.
+  let world = jitterStartHitch({ world: levelToWorld(level, catalog), random: args.random });
   // Reproduce an exact scenario from a pasted debug URL (?dbg=<levelId>&x=..&y=..&h=..).
   const urlState = parseDebugState(window.location.search);
   if (urlState && urlState.levelId === level.id) world = applyDebugState(world, urlState);

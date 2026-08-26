@@ -19,11 +19,16 @@ class FakeClock implements Clock {
 
 type CameraCall = { center: { x: number; y: number }; zoom: number };
 
-function fakeRenderer(): Renderer & { cameraCalls: CameraCall[] } {
+function fakeRenderer(): Renderer & { cameraCalls: CameraCall[]; entities: Entity[] } {
   const cameraCalls: CameraCall[] = [];
+  const entities: Entity[] = [];
   return {
     cameraCalls,
-    sync: (_e: Entity[]) => {},
+    entities,
+    sync: (e: Entity[]) => {
+      entities.length = 0;
+      entities.push(...e);
+    },
     follow: () => {},
     setCamera: (center, zoom) => {
       cameraCalls.push({ center, zoom });
@@ -52,7 +57,14 @@ function level(exit: Level["exit"]): Level {
 let controlsRoot: HTMLElement | undefined;
 afterEach(() => controlsRoot?.remove());
 
-function mount(lvl: Level, onExitToMenu = () => {}, onNextLevel?: () => void, onStars?: (stars: number) => void) {
+/** A fixed roll of 0.5 is a zero-degree start jitter, so tests get the plain authored start. */
+function mount(
+  lvl: Level,
+  onExitToMenu = () => {},
+  onNextLevel?: () => void,
+  onStars?: (stars: number) => void,
+  random: () => number = () => 0.5,
+) {
   controlsRoot = document.createElement("div");
   document.body.appendChild(controlsRoot);
   const renderer = fakeRenderer();
@@ -64,6 +76,7 @@ function mount(lvl: Level, onExitToMenu = () => {}, onNextLevel?: () => void, on
     catalog,
     onExitToMenu,
     isTouch: false,
+    random,
     ...(onNextLevel ? { onNextLevel } : {}),
     ...(onStars ? { onStars } : {}),
   });
@@ -84,6 +97,24 @@ describe("createPlayScreen", () => {
     expect(won.controlsRoot.querySelector(".play-timer")?.textContent).toContain("par 1:00");
     won.screen.tick(1000 / 60);
     expect(won.controlsRoot.querySelector(".win-time")?.textContent).toMatch(/^Time \d+:\d\d · par 1:00$/);
+  });
+
+  it("starts the trailer folded a few degrees off the car, never dead straight", () => {
+    const { screen, renderer } = mount(
+      level({ a: { x: 30, y: -3 }, b: { x: 30, y: 3 }, outward: { x: 1, y: 0 } }),
+      () => {},
+      undefined,
+      undefined,
+      () => 1, // top of the roll: the full +3°
+    );
+    screen.tick(1000 / 60);
+    const car = renderer.entities.find((e) => e.id === "car:0");
+    const trailer = renderer.entities.find((e) => e.id === "car:0:trailer");
+    expect(car).toBeDefined();
+    expect(trailer).toBeDefined();
+    const fold = Math.abs((trailer?.rotation ?? 0) - (car?.rotation ?? 0));
+    expect(fold).toBeGreaterThan(0);
+    expect(fold).toBeLessThanOrEqual((3 * Math.PI) / 180 + 1e-9);
   });
 
   it("dismisses the goal banner on the first input", () => {
